@@ -4,54 +4,26 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
     defer std.debug.assert(gpa.deinit() == .ok);
 
-    const allocator = gpa.allocator();
+    const alloc = gpa.allocator();
 
-    const keys_ducet = try std.fs.cwd().readFileAlloc(allocator, "allkeys.txt", 3 * 1024 * 1024);
-    defer allocator.free(keys_ducet);
+    const keys = try std.fs.cwd().readFileAlloc(alloc, "data/allkeys.txt", 3 * 1024 * 1024);
+    defer alloc.free(keys);
 
-    const keys_cldr = try std.fs.cwd().readFileAlloc(allocator, "allkeys_cldr.txt", 3 * 1024 * 1024);
-    defer allocator.free(keys_cldr);
+    const keys_cldr = try std.fs.cwd().readFileAlloc(alloc, "data/allkeys_cldr.txt", 3 * 1024 * 1024);
+    defer alloc.free(keys_cldr);
 
-    var ducet_map = try mapLow(allocator, keys_ducet);
-    defer ducet_map.deinit();
+    var low = try mapLow(alloc, keys);
+    defer low.deinit();
 
-    var ducet_file = try std.fs.cwd().createFile("low.bin", .{ .truncate = true });
-    defer ducet_file.close();
+    var low_cldr = try mapLow(alloc, keys_cldr);
+    defer low_cldr.deinit();
 
-    var ducet_bw = std.io.bufferedWriter(ducet_file.writer());
-    try saveLowMap(&ducet_map, ducet_bw.writer());
-    try ducet_bw.flush();
+    try saveLowBin(&low, "bin/low.bin");
+    try saveLowBin(&low_cldr, "bin/low_cldr.bin");
 
-    var cldr_map = try mapLow(allocator, keys_cldr);
-    defer cldr_map.deinit();
-
-    var cldr_file = try std.fs.cwd().createFile("low_cldr.bin", .{ .truncate = true });
-    defer cldr_file.close();
-
-    var cldr_bw = std.io.bufferedWriter(cldr_file.writer());
-    try saveLowMap(&cldr_map, cldr_bw.writer());
-    try cldr_bw.flush();
-
-    //
     // Also write to JSON for debugging
-    //
-
-    const json_out = try std.fs.cwd().createFile("json/low.json", .{ .truncate = true });
-    defer json_out.close();
-
-    var ws = std.json.writeStream(json_out.writer(), .{});
-    try ws.beginObject();
-
-    var map_iter = ducet_map.iterator();
-    while (map_iter.next()) |entry| {
-        const key_str = try std.fmt.allocPrint(allocator, "{}", .{entry.key_ptr.*});
-        try ws.objectField(key_str);
-        try ws.write(entry.value_ptr.*);
-
-        allocator.free(key_str);
-    }
-
-    try ws.endObject();
+    try saveLowJson(alloc, &low, "json/low.json");
+    try saveLowJson(alloc, &low_cldr, "json/low_cldr.json");
 }
 
 //
@@ -78,8 +50,8 @@ const HEX: std.bit_set.ArrayBitSet(usize, 256) = blk: {
 // Helper functions
 //
 
-fn mapLow(allocator: std.mem.Allocator, keys: []const u8) !std.AutoHashMap(u32, u32) {
-    var map = std.AutoHashMap(u32, u32).init(allocator);
+fn mapLow(alloc: std.mem.Allocator, keys: []const u8) !std.AutoHashMap(u32, u32) {
+    var map = std.AutoHashMap(u32, u32).init(alloc);
     errdefer map.deinit();
 
     var line_iter = std.mem.splitScalar(u8, keys, '\n');
@@ -88,25 +60,25 @@ fn mapLow(allocator: std.mem.Allocator, keys: []const u8) !std.AutoHashMap(u32, 
 
         var split_semi = std.mem.splitScalar(u8, line, ';');
 
-        var code_points_str = split_semi.next() orelse return error.InvalidData;
-        code_points_str = std.mem.trim(u8, code_points_str, " ");
+        var points_str = split_semi.next() orelse return error.InvalidData;
+        points_str = std.mem.trim(u8, points_str, " ");
 
-        var code_points = std.ArrayList(u32).init(allocator);
-        defer code_points.deinit();
+        var points = std.ArrayList(u32).init(alloc);
+        defer points.deinit();
 
-        var split_space = std.mem.splitScalar(u8, code_points_str, ' ');
+        var split_space = std.mem.splitScalar(u8, points_str, ' ');
         while (split_space.next()) |cp_str| {
             const cp = try std.fmt.parseInt(u32, cp_str, 16);
-            try code_points.append(cp);
+            try points.append(cp);
         }
 
-        std.debug.assert(1 <= code_points.items.len and code_points.items.len <= 3);
+        std.debug.assert(1 <= points.items.len and points.items.len <= 3);
 
-        if (code_points.items[0] > 0xB6) continue;
-        if (code_points.items[0] == 0x4C or code_points.items[0] == 0x6C) continue; // L/l
+        if (points.items[0] > 0xB6) continue;
+        if (points.items[0] == 0x4C or points.items[0] == 0x6C) continue; // L/l
 
-        std.debug.assert(code_points.items.len == 1);
-        const code_point = code_points.items[0];
+        std.debug.assert(points.items.len == 1);
+        const code_point = points.items[0];
 
         const remainder = split_semi.next() orelse return error.InvalidData;
         var split_hash = std.mem.splitScalar(u8, remainder, '#');
@@ -129,8 +101,8 @@ fn mapLow(allocator: std.mem.Allocator, keys: []const u8) !std.AutoHashMap(u32, 
         const tertiary_str = split_period.next() orelse return error.InvalidData;
         const tertiary = try std.fmt.parseInt(u8, tertiary_str, 16);
 
-        const packed_weights = packWeights(variable, primary, secondary, tertiary);
-        try map.put(code_point, packed_weights);
+        const weights_packed = packWeights(variable, primary, secondary, tertiary);
+        try map.put(code_point, weights_packed);
     }
 
     return map;
@@ -143,8 +115,12 @@ fn packWeights(variable: bool, primary: u16, secondary: u16, tertiary: u8) u32 {
     return upper | @as(u32, lower);
 }
 
-fn saveLowMap(map: *const std.AutoHashMap(u32, u32), writer: anytype) !void {
-    try writer.writeInt(u32, @intCast(map.count()), .little);
+fn saveLowBin(map: *const std.AutoHashMap(u32, u32), path: []const u8) !void {
+    var out_file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer out_file.close();
+
+    var bw = std.io.bufferedWriter(out_file.writer());
+    try bw.writer().writeInt(u32, @intCast(map.count()), .little);
 
     var it = map.iterator();
     while (it.next()) |kv| {
@@ -153,6 +129,29 @@ fn saveLowMap(map: *const std.AutoHashMap(u32, u32), writer: anytype) !void {
             .value = std.mem.nativeToLittle(u32, kv.value_ptr.*),
         };
 
-        try writer.writeStruct(e);
+        try bw.writer().writeStruct(e);
     }
+}
+
+fn saveLowJson(
+    alloc: std.mem.Allocator,
+    map: *const std.AutoHashMap(u32, u32),
+    path: []const u8,
+) !void {
+    const out_file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer out_file.close();
+
+    var ws = std.json.writeStream(out_file.writer(), .{});
+    try ws.beginObject();
+
+    var it = map.iterator();
+    while (it.next()) |entry| {
+        const key_str = try std.fmt.allocPrint(alloc, "{}", .{entry.key_ptr.*});
+        try ws.objectField(key_str);
+        try ws.write(entry.value_ptr.*);
+
+        alloc.free(key_str);
+    }
+
+    try ws.endObject();
 }
