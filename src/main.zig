@@ -31,6 +31,27 @@ pub fn main() !void {
     var cldr_bw = std.io.bufferedWriter(cldr_file.writer());
     try saveLowMap(&cldr_map, cldr_bw.writer());
     try cldr_bw.flush();
+
+    //
+    // Also write to JSON for debugging
+    //
+
+    const json_out = try std.fs.cwd().createFile("json/low.json", .{ .truncate = true });
+    defer json_out.close();
+
+    var ws = std.json.writeStream(json_out.writer(), .{});
+    try ws.beginObject();
+
+    var map_iter = ducet_map.iterator();
+    while (map_iter.next()) |entry| {
+        const key_str = try std.fmt.allocPrint(allocator, "{}", .{entry.key_ptr.*});
+        try ws.objectField(key_str);
+        try ws.write(entry.value_ptr.*);
+
+        allocator.free(key_str);
+    }
+
+    try ws.endObject();
 }
 
 //
