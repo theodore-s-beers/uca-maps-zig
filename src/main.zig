@@ -131,6 +131,8 @@ fn saveLowBin(map: *const std.AutoHashMap(u32, u32), path: []const u8) !void {
 
         try bw.writer().writeStruct(e);
     }
+
+    try bw.flush();
 }
 
 fn saveLowJson(
