@@ -24,11 +24,11 @@ const HEX: std.bit_set.ArrayBitSet(usize, 256) = blk: {
 // Public functions
 //
 
-pub fn mapLow(alloc: std.mem.Allocator, keys: []const u8) ![183]u32 {
+pub fn mapLow(alloc: std.mem.Allocator, keys: *const []const u8) ![183]u32 {
     var map = std.AutoHashMap(u32, u32).init(alloc);
     defer map.deinit();
 
-    var line_iter = std.mem.splitScalar(u8, keys, '\n');
+    var line_iter = std.mem.splitScalar(u8, keys.*, '\n');
     while (line_iter.next()) |line| {
         if (line.len == 0 or !HEX.isSet(line[0])) continue;
 
@@ -87,10 +87,10 @@ pub fn mapLow(alloc: std.mem.Allocator, keys: []const u8) ![183]u32 {
 }
 
 pub fn saveLowBin(map: *const std.AutoHashMap(u32, u32), path: []const u8) !void {
-    var out_file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer out_file.close();
+    var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
 
-    var bw = std.io.bufferedWriter(out_file.writer());
+    var bw = std.io.bufferedWriter(file.writer());
     try bw.writer().writeInt(u32, @intCast(map.count()), .little);
 
     var it = map.iterator();
@@ -107,10 +107,10 @@ pub fn saveLowBin(map: *const std.AutoHashMap(u32, u32), path: []const u8) !void
 }
 
 pub fn saveLowJson(arr: *const [183]u32, path: []const u8) !void {
-    const out_file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer out_file.close();
+    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
 
-    var ws = std.json.writeStream(out_file.writer(), .{});
+    var ws = std.json.writeStream(file.writer(), .{});
 
     try ws.beginArray();
     for (arr) |value| try ws.write(value);
