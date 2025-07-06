@@ -5,6 +5,7 @@ const decomp = @import("decomp");
 const fcd = @import("fcd");
 const low = @import("low");
 const multi = @import("multi");
+const single = @import("single");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
@@ -71,7 +72,31 @@ pub fn main() !void {
     try low.saveLowJson(&low_cldr, "json/low_cldr.json");
 
     //
-    // Start testing multis
+    // Single-code-point weights
+    //
+
+    var singles_ducet = try single.mapSingles(alloc, &keys_ducet);
+    defer {
+        var it = singles_ducet.iterator();
+        while (it.next()) |kv| alloc.free(kv.value_ptr.*);
+        singles_ducet.deinit();
+    }
+
+    var singles_cldr = try single.mapSingles(alloc, &keys_cldr);
+    defer {
+        var it = singles_cldr.iterator();
+        while (it.next()) |kv| alloc.free(kv.value_ptr.*);
+        singles_cldr.deinit();
+    }
+
+    try single.saveSinglesBin(&singles_ducet, "bin/singles.bin");
+    try single.saveSinglesBin(&singles_cldr, "bin/singles_cldr.bin");
+
+    try single.saveSinglesJson(alloc, &singles_ducet, "json/singles.json");
+    try single.saveSinglesJson(alloc, &singles_cldr, "json/singles_cldr.json");
+
+    //
+    // Multi-code-point weights
     //
 
     var multi_ducet = try multi.mapMulti(alloc, &keys_ducet);

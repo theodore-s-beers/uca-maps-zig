@@ -36,6 +36,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const single_mod = b.createModule(.{
+        .root_source_file = b.path("src/single.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const util_mod = b.createModule(.{
         .root_source_file = b.path("src/util.zig"),
         .target = target,
@@ -55,11 +61,14 @@ pub fn build(b: *std.Build) void {
 
     multi_mod.addImport("util", util_mod);
 
+    single_mod.addImport("util", util_mod);
+
     exe_mod.addImport("ccc", ccc_mod);
     exe_mod.addImport("decomp", decomp_mod);
     exe_mod.addImport("fcd", fcd_mod);
     exe_mod.addImport("low", low_mod);
     exe_mod.addImport("multi", multi_mod);
+    exe_mod.addImport("single", single_mod);
 
     const exe = b.addExecutable(.{
         .name = "uca_maps_zig",
@@ -92,6 +101,9 @@ pub fn build(b: *std.Build) void {
     const multi_unit_tests = b.addTest(.{ .root_module = multi_mod });
     const run_multi_unit_tests = b.addRunArtifact(multi_unit_tests);
 
+    const single_unit_tests = b.addTest(.{ .root_module = single_mod });
+    const run_single_unit_tests = b.addRunArtifact(single_unit_tests);
+
     const util_unit_tests = b.addTest(.{ .root_module = util_mod });
     const run_util_unit_tests = b.addRunArtifact(util_unit_tests);
 
@@ -104,6 +116,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_fcd_unit_tests.step);
     test_step.dependOn(&run_low_unit_tests.step);
     test_step.dependOn(&run_multi_unit_tests.step);
+    test_step.dependOn(&run_single_unit_tests.step);
     test_step.dependOn(&run_util_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
 }
