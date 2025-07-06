@@ -61,12 +61,16 @@ pub fn loadCCC(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32,
     return map;
 }
 
-pub fn saveCccBin(map: *const std.AutoHashMap(u32, u8), path: []const u8) !void {
-    var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
+pub fn saveCccBin(
+    alloc: std.mem.Allocator,
+    map: *const std.AutoHashMap(u32, u8),
+    path: []const u8,
+) !void {
+    var buffer = std.ArrayList(u8).init(alloc);
+    defer buffer.deinit();
 
-    var bw = std.io.bufferedWriter(file.writer());
-    try bw.writer().writeInt(u32, @intCast(map.count()), .little);
+    const count = std.mem.nativeToLittle(u32, @intCast(map.count()));
+    try buffer.appendSlice(std.mem.asBytes(&count));
 
     var it = map.iterator();
     while (it.next()) |kv| {
@@ -75,10 +79,13 @@ pub fn saveCccBin(map: *const std.AutoHashMap(u32, u8), path: []const u8) !void 
             .value = kv.value_ptr.*, // u8 has no endianness
         };
 
-        try bw.writer().writeStruct(e);
+        try buffer.appendSlice(std.mem.asBytes(&e));
     }
 
-    try bw.flush();
+    var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+
+    try file.writeAll(buffer.items);
 }
 
 pub fn saveCccJson(

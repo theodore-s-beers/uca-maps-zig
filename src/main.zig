@@ -34,7 +34,7 @@ pub fn main() !void {
     var ccc_map = try ccc.mapCCC(alloc, &uni_data);
     defer ccc_map.deinit();
 
-    try ccc.saveCccBin(&ccc_map, "bin/ccc.bin");
+    try ccc.saveCccBin(alloc, &ccc_map, "bin/ccc.bin");
     try ccc.saveCccJson(alloc, &ccc_map, "json/ccc.json");
 
     //
@@ -48,7 +48,7 @@ pub fn main() !void {
         decomps.deinit();
     }
 
-    try decomp.saveDecompBin(&decomps, "bin/decomp.bin");
+    try decomp.saveDecompBin(alloc, &decomps, "bin/decomp.bin");
     try decomp.saveDecompJson(alloc, &decomps, "json/decomp.json");
 
     //
@@ -58,7 +58,7 @@ pub fn main() !void {
     var fcd_map = try fcd.mapFCD(alloc, &uni_data);
     defer fcd_map.deinit();
 
-    try fcd.saveFcdBin(&fcd_map, "bin/fcd.bin");
+    try fcd.saveFcdBin(alloc, &fcd_map, "bin/fcd.bin");
     try fcd.saveFcdJson(alloc, &fcd_map, "json/fcd.json");
 
     //
@@ -89,8 +89,8 @@ pub fn main() !void {
         singles_cldr.deinit();
     }
 
-    try single.saveSinglesBin(&singles_ducet, "bin/singles.bin");
-    try single.saveSinglesBin(&singles_cldr, "bin/singles_cldr.bin");
+    try single.saveSinglesBin(alloc, &singles_ducet, "bin/singles.bin");
+    try single.saveSinglesBin(alloc, &singles_cldr, "bin/singles_cldr.bin");
 
     try single.saveSinglesJson(alloc, &singles_ducet, "json/singles.json");
     try single.saveSinglesJson(alloc, &singles_cldr, "json/singles_cldr.json");

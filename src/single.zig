@@ -142,11 +142,13 @@ pub fn loadSingles(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(
     return map;
 }
 
-pub fn saveSinglesBin(map: *const std.AutoHashMap(u32, []const u32), path: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    var bw = std.io.bufferedWriter(file.writer());
+pub fn saveSinglesBin(
+    alloc: std.mem.Allocator,
+    map: *const std.AutoHashMap(u32, []const u32),
+    path: []const u8,
+) !void {
+    var buffer = std.ArrayList(u8).init(alloc);
+    defer buffer.deinit();
 
     var payload_bytes: u32 = 0;
     var payload_iter = map.iterator();
@@ -160,7 +162,7 @@ pub fn saveSinglesBin(map: *const std.AutoHashMap(u32, []const u32), path: []con
         .count = std.mem.nativeToLittle(u32, @intCast(map.count())),
         .total_bytes = std.mem.nativeToLittle(u32, payload_bytes),
     };
-    try bw.writer().writeStruct(main_header);
+    try buffer.appendSlice(std.mem.asBytes(&main_header));
 
     var write_iter = map.iterator();
     while (write_iter.next()) |kv| {
@@ -170,11 +172,16 @@ pub fn saveSinglesBin(map: *const std.AutoHashMap(u32, []const u32), path: []con
             .len = @intCast(values.len), // u8 has no endianness
         };
 
-        try bw.writer().writeStruct(entry_header);
-        for (values) |v| try bw.writer().writeInt(u32, v, .little);
+        try buffer.appendSlice(std.mem.asBytes(&entry_header));
+        for (values) |v| {
+            try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u32, v)));
+        }
     }
 
-    try bw.flush();
+    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+
+    try file.writeAll(buffer.items);
 }
 
 pub fn saveSinglesJson(

@@ -85,12 +85,16 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
     return fcd_map;
 }
 
-pub fn saveFcdBin(map: *const std.AutoHashMap(u32, u16), path: []const u8) !void {
-    var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
+pub fn saveFcdBin(
+    alloc: std.mem.Allocator,
+    map: *const std.AutoHashMap(u32, u16),
+    path: []const u8,
+) !void {
+    var buffer = std.ArrayList(u8).init(alloc);
+    defer buffer.deinit();
 
-    var bw = std.io.bufferedWriter(file.writer());
-    try bw.writer().writeInt(u32, @intCast(map.count()), .little);
+    const count = std.mem.nativeToLittle(u32, @intCast(map.count()));
+    try buffer.appendSlice(std.mem.asBytes(&count));
 
     var it = map.iterator();
     while (it.next()) |kv| {
@@ -99,10 +103,13 @@ pub fn saveFcdBin(map: *const std.AutoHashMap(u32, u16), path: []const u8) !void
             .value = std.mem.nativeToLittle(u16, kv.value_ptr.*),
         };
 
-        try bw.writer().writeStruct(e);
+        try buffer.appendSlice(std.mem.asBytes(&e));
     }
 
-    try bw.flush();
+    var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+
+    try file.writeAll(buffer.items);
 }
 
 pub fn saveFcdJson(
