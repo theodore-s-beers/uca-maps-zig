@@ -117,6 +117,56 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHa
     return canonical;
 }
 
+pub fn loadDecomps(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, []u32) {
+    var file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    var br = std.io.bufferedReader(file.reader());
+
+    const main_header = try br.reader().readStruct(DecompMapHeader);
+    const count = std.mem.littleToNative(u32, main_header.count);
+
+    const total_bytes = std.mem.littleToNative(u32, main_header.total_bytes);
+    if (total_bytes > 50 * 1024) return error.FileTooLarge;
+
+    const payload = try alloc.alloc(u8, total_bytes);
+    defer alloc.free(payload);
+
+    try br.reader().readNoEof(payload);
+
+    var map = std.AutoHashMap(u32, []u32).init(alloc);
+    try map.ensureTotalCapacity(count);
+
+    var offset: usize = 0;
+    var n: u32 = 0;
+
+    while (n < count) : (n += 1) {
+        const header = std.mem.bytesToValue(
+            DecompEntryHeader,
+            payload[offset..][0..@sizeOf(DecompEntryHeader)],
+        );
+        offset += @sizeOf(DecompEntryHeader);
+
+        const key = std.mem.littleToNative(u32, header.key);
+
+        const values_len = header.len; // u8 has no endianness
+        const value_bytes = values_len * @sizeOf(u32);
+
+        const vals = try alloc.alloc(u32, values_len);
+        errdefer alloc.free(vals);
+
+        const payload_vals = std.mem.bytesAsSlice(u32, payload[offset..][0..value_bytes]);
+        for (payload_vals, vals) |src, *dst| {
+            dst.* = std.mem.littleToNative(u32, src);
+        }
+
+        try map.put(key, vals);
+        offset += value_bytes;
+    }
+
+    return map;
+}
+
 pub fn saveDecompBin(map: *const std.AutoHashMap(u32, []const u32), path: []const u8) !void {
     const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
     defer file.close();

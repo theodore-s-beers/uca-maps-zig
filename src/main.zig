@@ -2,6 +2,7 @@ const std = @import("std");
 
 const ccc = @import("ccc");
 const decomp = @import("decomp");
+const fcd = @import("fcd");
 const low = @import("low");
 
 pub fn main() !void {
@@ -47,6 +48,16 @@ pub fn main() !void {
 
     try decomp.saveDecompBin(&decomps, "bin/decomp.bin");
     try decomp.saveDecompJson(alloc, &decomps, "json/decomp.json");
+
+    //
+    // FCD
+    //
+
+    var fcd_map = try fcd.mapFCD(alloc, &uni_data);
+    defer fcd_map.deinit();
+
+    try fcd.saveFcdBin(&fcd_map, "bin/fcd.bin");
+    try fcd.saveFcdJson(alloc, &fcd_map, "json/fcd.json");
 
     //
     // Low code point weights

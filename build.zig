@@ -18,6 +18,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const fcd_mod = b.createModule(.{
+        .root_source_file = b.path("src/fcd.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const low_mod = b.createModule(.{
         .root_source_file = b.path("src/low.zig"),
         .target = target,
@@ -30,8 +36,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    fcd_mod.addImport("ccc", ccc_mod);
+    fcd_mod.addImport("decomp", decomp_mod);
+
     exe_mod.addImport("ccc", ccc_mod);
     exe_mod.addImport("decomp", decomp_mod);
+    exe_mod.addImport("fcd", fcd_mod);
     exe_mod.addImport("low", low_mod);
 
     const exe = b.addExecutable(.{
@@ -56,6 +66,9 @@ pub fn build(b: *std.Build) void {
     const decomp_unit_tests = b.addTest(.{ .root_module = decomp_mod });
     const run_decomp_unit_tests = b.addRunArtifact(decomp_unit_tests);
 
+    const fcd_unit_tests = b.addTest(.{ .root_module = fcd_mod });
+    const run_fcd_unit_tests = b.addRunArtifact(fcd_unit_tests);
+
     const low_unit_tests = b.addTest(.{ .root_module = low_mod });
     const run_low_unit_tests = b.addRunArtifact(low_unit_tests);
 
@@ -65,6 +78,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_ccc_unit_tests.step);
     test_step.dependOn(&run_decomp_unit_tests.step);
+    test_step.dependOn(&run_fcd_unit_tests.step);
     test_step.dependOn(&run_low_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
 }

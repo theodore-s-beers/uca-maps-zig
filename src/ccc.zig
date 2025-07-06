@@ -32,6 +32,35 @@ pub fn mapCCC(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
     return map;
 }
 
+pub fn loadCCC(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u8) {
+    var file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    var br = std.io.bufferedReader(file.reader());
+
+    const count = try br.reader().readInt(u32, .little);
+    const bytes_needed: usize = @as(usize, count) * @sizeOf(CccEntry);
+    if (bytes_needed > 10 * 1024) return error.FileTooLarge;
+
+    const payload = try alloc.alloc(u8, bytes_needed);
+    defer alloc.free(payload);
+
+    try br.reader().readNoEof(payload);
+    const entries = std.mem.bytesAsSlice(CccEntry, payload);
+    std.debug.assert(entries.len == count);
+
+    var map = std.AutoHashMap(u32, u8).init(alloc);
+    try map.ensureTotalCapacity(count);
+
+    for (entries) |e| {
+        const key = std.mem.littleToNative(u32, e.key);
+        const value = e.value; // u8 has no endianness
+        try map.put(key, value);
+    }
+
+    return map;
+}
+
 pub fn saveCccBin(map: *const std.AutoHashMap(u32, u8), path: []const u8) !void {
     var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
     defer file.close();
