@@ -102,48 +102,41 @@ pub fn saveMultiBin(
     map: *const std.AutoHashMap(u64, []const u32),
     path: []const u8,
 ) !void {
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    var bw = std.io.bufferedWriter(file.writer());
-
-    var entries = std.ArrayList(MultiEntry).init(alloc);
-    defer entries.deinit();
-
-    var it = map.iterator();
-    while (it.next()) |kv| {
-        try entries.append(MultiEntry{ .key = kv.key_ptr.*, .values = kv.value_ptr.* });
-    }
-
-    std.mem.sort(MultiEntry, entries.items, {}, comptime struct {
-        fn lessThan(_: void, lhs: MultiEntry, rhs: MultiEntry) bool {
-            return lhs.key < rhs.key;
-        }
-    }.lessThan);
+    var buffer = std.ArrayList(u8).init(alloc);
+    defer buffer.deinit();
 
     var payload_bytes: u16 = 0;
-    for (entries.items) |entry| {
+    var payload_iter = map.iterator();
+    while (payload_iter.next()) |kv| {
+        const values = kv.value_ptr.*;
         payload_bytes += @sizeOf(MultiEntryHeader);
-        payload_bytes += @intCast(entry.values.len * @sizeOf(u32));
+        payload_bytes += @intCast(values.len * @sizeOf(u32));
     }
 
     const main_header = MultiMapHeader{
         .count = std.mem.nativeToLittle(u16, @intCast(map.count())),
         .total_bytes = std.mem.nativeToLittle(u16, payload_bytes),
     };
-    try bw.writer().writeStruct(main_header);
+    try buffer.appendSlice(std.mem.asBytes(&main_header));
 
-    for (entries.items) |entry| {
+    var write_iter = map.iterator();
+    while (write_iter.next()) |kv| {
+        const values = kv.value_ptr.*;
         const entry_header = MultiEntryHeader{
-            .key = std.mem.nativeToLittle(u64, entry.key),
-            .len = @intCast(entry.values.len), // u8 has no endianness
+            .key = std.mem.nativeToLittle(u64, kv.key_ptr.*),
+            .len = @intCast(values.len), // u8 has no endianness
         };
 
-        try bw.writer().writeStruct(entry_header);
-        for (entry.values) |v| try bw.writer().writeInt(u32, v, .little);
+        try buffer.appendSlice(std.mem.asBytes(&entry_header));
+        for (values) |v| {
+            try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u32, v)));
+        }
     }
 
-    try bw.flush();
+    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+
+    try file.writeAll(buffer.items);
 }
 
 pub fn saveMultiJson(
