@@ -55,7 +55,7 @@ pub fn loadCCC(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32,
     for (entries) |e| {
         const key = std.mem.littleToNative(u32, e.key);
         const value = e.value; // u8 has no endianness
-        try map.put(key, value);
+        map.putAssumeCapacityNoClobber(key, value);
     }
 
     return map;

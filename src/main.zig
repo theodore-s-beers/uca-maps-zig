@@ -4,6 +4,7 @@ const ccc = @import("ccc");
 const decomp = @import("decomp");
 const fcd = @import("fcd");
 const low = @import("low");
+const multi = @import("multi");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
@@ -68,4 +69,28 @@ pub fn main() !void {
 
     try low.saveLowJson(&low_ducet, "json/low.json");
     try low.saveLowJson(&low_cldr, "json/low_cldr.json");
+
+    //
+    // Start testing multis
+    //
+
+    var multi_ducet = try multi.mapMulti(alloc, &keys_ducet);
+    defer {
+        var it = multi_ducet.iterator();
+        while (it.next()) |kv| alloc.free(kv.value_ptr.*);
+        multi_ducet.deinit();
+    }
+
+    var multi_cldr = try multi.mapMulti(alloc, &keys_cldr);
+    defer {
+        var it = multi_cldr.iterator();
+        while (it.next()) |kv| alloc.free(kv.value_ptr.*);
+        multi_cldr.deinit();
+    }
+
+    try multi.saveMultiBin(&multi_ducet, "bin/multi.bin");
+    try multi.saveMultiBin(&multi_cldr, "bin/multi_cldr.bin");
+
+    try multi.saveMultiJson(alloc, &multi_ducet, "json/multi.json");
+    try multi.saveMultiJson(alloc, &multi_cldr, "json/multi_cldr.json");
 }

@@ -160,7 +160,7 @@ pub fn loadDecomps(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(
             dst.* = std.mem.littleToNative(u32, src);
         }
 
-        try map.put(key, vals);
+        map.putAssumeCapacityNoClobber(key, vals);
         offset += value_bytes;
     }
 

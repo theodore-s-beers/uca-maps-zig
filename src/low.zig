@@ -1,24 +1,6 @@
 const std = @import("std");
 
-//
-// Types
-//
-
-const LowEntry = packed struct {
-    key: u32,
-    value: u32,
-};
-
-//
-// Constants
-//
-
-const HEX: std.bit_set.ArrayBitSet(usize, 256) = blk: {
-    var set = std.StaticBitSet(256).initEmpty();
-    for ('0'..':') |c| set.set(c);
-    for ('A'..'G') |c| set.set(c);
-    break :blk set;
-};
+const util = @import("util");
 
 //
 // Public functions
@@ -30,7 +12,7 @@ pub fn mapLow(alloc: std.mem.Allocator, keys: *const []const u8) ![183]u32 {
 
     var line_iter = std.mem.splitScalar(u8, keys.*, '\n');
     while (line_iter.next()) |line| {
-        if (line.len == 0 or !HEX.isSet(line[0])) continue;
+        if (line.len == 0 or !util.HEX.isSet(line[0])) continue;
 
         var split_semi = std.mem.splitScalar(u8, line, ';');
 
@@ -75,7 +57,7 @@ pub fn mapLow(alloc: std.mem.Allocator, keys: *const []const u8) ![183]u32 {
         const tertiary_str = split_period.next() orelse return error.InvalidData;
         const tertiary = try std.fmt.parseInt(u8, tertiary_str, 16);
 
-        const weights_packed = packWeights(variable, primary, secondary, tertiary);
+        const weights_packed = util.packWeights(variable, primary, secondary, tertiary);
         try map.put(code_point, weights_packed);
     }
 
@@ -84,26 +66,6 @@ pub fn mapLow(alloc: std.mem.Allocator, keys: *const []const u8) ![183]u32 {
     while (it.next()) |kv| arr[kv.key_ptr.*] = kv.value_ptr.*;
 
     return arr;
-}
-
-pub fn saveLowBin(map: *const std.AutoHashMap(u32, u32), path: []const u8) !void {
-    var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    var bw = std.io.bufferedWriter(file.writer());
-    try bw.writer().writeInt(u32, @intCast(map.count()), .little);
-
-    var it = map.iterator();
-    while (it.next()) |kv| {
-        const e = LowEntry{
-            .key = std.mem.nativeToLittle(u32, kv.key_ptr.*),
-            .value = std.mem.nativeToLittle(u32, kv.value_ptr.*),
-        };
-
-        try bw.writer().writeStruct(e);
-    }
-
-    try bw.flush();
 }
 
 pub fn saveLowJson(arr: *const [183]u32, path: []const u8) !void {
@@ -115,15 +77,4 @@ pub fn saveLowJson(arr: *const [183]u32, path: []const u8) !void {
     try ws.beginArray();
     for (arr) |value| try ws.write(value);
     try ws.endArray();
-}
-
-//
-// Private functions
-//
-
-fn packWeights(variable: bool, primary: u16, secondary: u16, tertiary: u8) u32 {
-    const upper: u32 = (@as(u32, primary) << 16);
-    const v_int: u16 = @intFromBool(variable);
-    const lower: u16 = (v_int << 15) | (@as(u16, tertiary) << 9) | secondary;
-    return upper | @as(u32, lower);
 }
