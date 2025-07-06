@@ -112,27 +112,24 @@ pub fn saveMultiBin(
     var payload_bytes: u16 = 0;
     var payload_iter = map.iterator();
     while (payload_iter.next()) |kv| {
-        const values = kv.value_ptr.*;
-        payload_bytes += @sizeOf(MultiEntryHeader);
-        payload_bytes += @intCast(values.len * @sizeOf(u32));
+        payload_bytes += @sizeOf(u64); // Key
+        payload_bytes += @sizeOf(u8); // Number of values
+        payload_bytes += @intCast(kv.value_ptr.len * @sizeOf(u32)); // Values
     }
 
-    const main_header = MultiMapHeader{
-        .count = std.mem.nativeToLittle(u16, @intCast(map.count())),
-        .total_bytes = std.mem.nativeToLittle(u16, payload_bytes),
-    };
-    try buffer.appendSlice(std.mem.asBytes(&main_header));
+    // Map header
+    try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u16, @intCast(map.count()))));
+    try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u16, payload_bytes)));
 
     var write_iter = map.iterator();
     while (write_iter.next()) |kv| {
-        const values = kv.value_ptr.*;
-        const entry_header = MultiEntryHeader{
-            .key = std.mem.nativeToLittle(u64, kv.key_ptr.*),
-            .len = @intCast(values.len), // u8 has no endianness
-        };
+        // Entry header
+        try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u64, kv.key_ptr.*)));
+        const len: u8 = @intCast(kv.value_ptr.len);
+        try buffer.appendSlice(std.mem.asBytes(&len));
 
-        try buffer.appendSlice(std.mem.asBytes(&entry_header));
-        for (values) |v| {
+        // Entry values
+        for (kv.value_ptr.*) |v| {
             try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u32, v)));
         }
     }
@@ -180,7 +177,7 @@ pub fn saveMultiJson(
 //
 
 fn packCodePoints(code_points: *const []const u32) u64 {
-    switch (code_points.*.len) {
+    switch (code_points.len) {
         2 => {
             return (@as(u64, code_points.*[0]) << 21) | @as(u64, code_points.*[1]);
         },
