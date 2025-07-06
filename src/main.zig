@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const ccc = @import("ccc");
 const decomp = @import("decomp");
 const low = @import("low");
 
@@ -22,6 +23,16 @@ pub fn main() !void {
 
     const keys_cldr = try cwd.readFileAlloc(alloc, "data/allkeys_cldr.txt", 3 * 1024 * 1024);
     defer alloc.free(keys_cldr);
+
+    //
+    // Canonical combining classes
+    //
+
+    var ccc_map = try ccc.mapCCC(alloc, &uni_data);
+    defer ccc_map.deinit();
+
+    try ccc.saveCccBin(&ccc_map, "bin/ccc.bin");
+    try ccc.saveCccJson(alloc, &ccc_map, "json/ccc.json");
 
     //
     // Decompositions

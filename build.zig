@@ -6,6 +6,12 @@ pub fn build(b: *std.Build) void {
     // Optimization level to be set by user
     const optimize = b.standardOptimizeOption(.{});
 
+    const ccc_mod = b.createModule(.{
+        .root_source_file = b.path("src/ccc.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
     const decomp_mod = b.createModule(.{
         .root_source_file = b.path("src/decomp.zig"),
         .target = target,
@@ -24,6 +30,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    exe_mod.addImport("ccc", ccc_mod);
     exe_mod.addImport("decomp", decomp_mod);
     exe_mod.addImport("low", low_mod);
 
@@ -43,6 +50,9 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
+    const ccc_unit_tests = b.addTest(.{ .root_module = ccc_mod });
+    const run_ccc_unit_tests = b.addRunArtifact(ccc_unit_tests);
+
     const decomp_unit_tests = b.addTest(.{ .root_module = decomp_mod });
     const run_decomp_unit_tests = b.addRunArtifact(decomp_unit_tests);
 
@@ -53,6 +63,7 @@ pub fn build(b: *std.Build) void {
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
     const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_ccc_unit_tests.step);
     test_step.dependOn(&run_decomp_unit_tests.step);
     test_step.dependOn(&run_low_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
