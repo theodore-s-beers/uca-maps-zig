@@ -33,6 +33,12 @@ pub fn mapMulti(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHash
         map.deinit();
     }
 
+    var points = std.ArrayList(u32).init(alloc);
+    defer points.deinit();
+
+    var weights = std.ArrayList(u32).init(alloc);
+    errdefer weights.deinit();
+
     var line_it = std.mem.splitScalar(u8, data.*, '\n');
     while (line_it.next()) |line| {
         if (line.len == 0 or !util.HEX.isSet(line[0])) continue;
@@ -42,8 +48,7 @@ pub fn mapMulti(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHash
         var points_str = split_semi.next() orelse return error.InvalidData;
         points_str = std.mem.trim(u8, points_str, " ");
 
-        var points = std.ArrayList(u32).init(alloc);
-        defer points.deinit();
+        points.clearRetainingCapacity();
 
         var split_space = std.mem.splitScalar(u8, points_str, ' ');
         while (split_space.next()) |cp_str| {
@@ -62,8 +67,7 @@ pub fn mapMulti(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHash
         var weights_str = split_hash.next() orelse return error.InvalidData;
         weights_str = std.mem.trim(u8, weights_str, " []");
 
-        var weights = std.ArrayList(u32).init(alloc);
-        errdefer weights.deinit();
+        weights.clearRetainingCapacity();
 
         var split_bracket = std.mem.splitScalar(u8, weights_str, '[');
         while (split_bracket.next()) |x| {
@@ -144,17 +148,18 @@ pub fn saveMultiJson(
     map: *const std.AutoHashMap(u64, []const u32),
     path: []const u8,
 ) !void {
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
+    var buffer = std.ArrayList(u8).init(alloc);
+    defer buffer.deinit();
 
-    var ws = std.json.writeStream(file.writer(), .{});
+    var ws = std.json.writeStream(buffer.writer(), .{});
+
     try ws.beginObject();
+
+    var key_buf: [32]u8 = undefined;
 
     var it = map.iterator();
     while (it.next()) |entry| {
-        const key_str = try std.fmt.allocPrint(alloc, "{}", .{entry.key_ptr.*});
-        defer alloc.free(key_str);
-
+        const key_str = try std.fmt.bufPrint(&key_buf, "{}", .{entry.key_ptr.*});
         try ws.objectField(key_str);
 
         try ws.beginArray();
@@ -163,6 +168,11 @@ pub fn saveMultiJson(
     }
 
     try ws.endObject();
+
+    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+
+    try file.writeAll(buffer.items);
 }
 
 //

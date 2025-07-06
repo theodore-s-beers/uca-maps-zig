@@ -10,6 +10,9 @@ pub fn mapLow(alloc: std.mem.Allocator, keys: *const []const u8) ![183]u32 {
     var map = std.AutoHashMap(u32, u32).init(alloc);
     defer map.deinit();
 
+    var points = std.ArrayList(u32).init(alloc);
+    defer points.deinit();
+
     var line_iter = std.mem.splitScalar(u8, keys.*, '\n');
     while (line_iter.next()) |line| {
         if (line.len == 0 or !util.HEX.isSet(line[0])) continue;
@@ -19,8 +22,7 @@ pub fn mapLow(alloc: std.mem.Allocator, keys: *const []const u8) ![183]u32 {
         var points_str = split_semi.next() orelse return error.InvalidData;
         points_str = std.mem.trim(u8, points_str, " ");
 
-        var points = std.ArrayList(u32).init(alloc);
-        defer points.deinit();
+        points.clearRetainingCapacity();
 
         var split_space = std.mem.splitScalar(u8, points_str, ' ');
         while (split_space.next()) |cp_str| {
@@ -72,9 +74,12 @@ pub fn saveLowJson(arr: *const [183]u32, path: []const u8) !void {
     const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
     defer file.close();
 
-    var ws = std.json.writeStream(file.writer(), .{});
+    var bw = std.io.bufferedWriter(file.writer());
+    var ws = std.json.writeStream(bw.writer(), .{});
 
     try ws.beginArray();
     for (arr) |value| try ws.write(value);
     try ws.endArray();
+
+    try bw.flush();
 }

@@ -37,13 +37,15 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
     // Iterate over lines and find combining classes
     //
 
+    var fields = std.ArrayList([]const u8).init(alloc);
+    defer fields.deinit();
+
     var line_iter = std.mem.splitScalar(u8, data.*, '\n');
 
     while (line_iter.next()) |line| {
         if (line.len == 0) continue;
 
-        var fields = std.ArrayList([]const u8).init(alloc);
-        defer fields.deinit();
+        fields.clearRetainingCapacity();
 
         var field_iter = std.mem.splitScalar(u8, line, ';');
         while (field_iter.next()) |field| {
@@ -117,20 +119,27 @@ pub fn saveFcdJson(
     map: *const std.AutoHashMap(u32, u16),
     path: []const u8,
 ) !void {
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
+    var buffer = std.ArrayList(u8).init(alloc);
+    defer buffer.deinit();
 
-    var ws = std.json.writeStream(file.writer(), .{});
+    var ws = std.json.writeStream(buffer.writer(), .{});
+
     try ws.beginObject();
+
+    var key_buf: [16]u8 = undefined;
 
     var map_iter = map.iterator();
     while (map_iter.next()) |entry| {
-        const key_str = try std.fmt.allocPrint(alloc, "{}", .{entry.key_ptr.*});
+        const key_str = try std.fmt.bufPrint(&key_buf, "{}", .{entry.key_ptr.*});
         try ws.objectField(key_str);
-        try ws.write(entry.value_ptr.*);
 
-        alloc.free(key_str);
+        try ws.write(entry.value_ptr.*);
     }
 
     try ws.endObject();
+
+    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+
+    try file.writeAll(buffer.items);
 }

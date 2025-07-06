@@ -8,12 +8,14 @@ const CccEntry = packed struct {
 pub fn mapCCC(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMap(u32, u8) {
     var map = std.AutoHashMap(u32, u8).init(alloc);
 
+    var fields = std.ArrayList([]const u8).init(alloc);
+    defer fields.deinit();
+
     var lines = std.mem.splitScalar(u8, data.*, '\n');
     while (lines.next()) |line| {
         if (line.len == 0) continue;
 
-        var fields = std.ArrayList([]const u8).init(alloc);
-        defer fields.deinit();
+        fields.clearRetainingCapacity();
 
         var field_iter = std.mem.splitScalar(u8, line, ';');
         while (field_iter.next()) |field| try fields.append(field);
@@ -93,20 +95,27 @@ pub fn saveCccJson(
     map: *const std.AutoHashMap(u32, u8),
     path: []const u8,
 ) !void {
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
+    var buffer = std.ArrayList(u8).init(alloc);
+    defer buffer.deinit();
 
-    var ws = std.json.writeStream(file.writer(), .{});
+    var ws = std.json.writeStream(buffer.writer(), .{});
+
     try ws.beginObject();
+
+    var key_buf: [16]u8 = undefined;
 
     var it = map.iterator();
     while (it.next()) |entry| {
-        const key_str = try std.fmt.allocPrint(alloc, "{}", .{entry.key_ptr.*});
+        const key_str = try std.fmt.bufPrint(&key_buf, "{}", .{entry.key_ptr.*});
         try ws.objectField(key_str);
-        try ws.write(entry.value_ptr.*);
 
-        alloc.free(key_str);
+        try ws.write(entry.value_ptr.*);
     }
 
     try ws.endObject();
+
+    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+
+    try file.writeAll(buffer.items);
 }

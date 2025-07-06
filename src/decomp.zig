@@ -28,12 +28,18 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHa
 
     var canonical = std.AutoHashMap(u32, []const u32).init(alloc);
 
+    var fields = std.ArrayList([]const u8).init(alloc);
+    defer fields.deinit();
+
+    var listed_decomps = std.ArrayList(u32).init(alloc);
+    defer listed_decomps.deinit();
+
     var line_it = std.mem.splitScalar(u8, data.*, '\n');
 
     while (line_it.next()) |line| {
         if (line.len == 0) continue;
 
-        var fields = std.ArrayList([]const u8).init(alloc);
+        fields.clearRetainingCapacity();
 
         var field_iter = std.mem.splitScalar(u8, line, ';');
         while (field_iter.next()) |field| try fields.append(field);
@@ -56,34 +62,33 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHa
         or (0xF0000 <= code_point and code_point <= 0xFFFFD) // Plane 15 private use
         or (0x10_0000 <= code_point and code_point <= 0x10_FFFD) // Plane 16 private use
         ) {
-            fields.deinit();
             continue;
         }
 
         const decomp_column = fields.items[5];
-        fields.deinit();
-
         if (decomp_column.len == 0) continue; // No decomposition
 
         if (std.mem.indexOfScalar(u8, decomp_column, '<')) |_| {
             continue; // Non-canonical decomposition
         }
 
-        var decomps = std.ArrayList(u32).init(alloc);
-        defer decomps.deinit();
+        listed_decomps.clearRetainingCapacity();
 
         var decomp_iter = std.mem.splitScalar(u8, decomp_column, ' ');
         while (decomp_iter.next()) |decomp_str| {
             std.debug.assert(4 <= decomp_str.len and decomp_str.len <= 5);
 
             const decomp = try std.fmt.parseInt(u32, decomp_str, 16);
-            try decomps.append(decomp);
+            try listed_decomps.append(decomp);
         }
 
-        std.debug.assert(decomps.items.len > 0);
+        std.debug.assert(listed_decomps.items.len > 0);
 
-        try listed.put(code_point, try decomps.toOwnedSlice());
+        try listed.put(code_point, try listed_decomps.toOwnedSlice());
     }
+
+    var result = std.ArrayList(u32).init(alloc);
+    defer result.deinit();
 
     var listed_it = listed.iterator();
 
@@ -97,8 +102,7 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHa
                 break :blk try getCanonicalDecomp(alloc, &listed, decomps[0]);
             } else {
                 // Multi-code-point decomposition; recurse badly
-                var result = std.ArrayList(u32).init(alloc);
-                defer result.deinit();
+                result.clearRetainingCapacity();
 
                 for (decomps) |d| {
                     const c = try getCanonicalDecomp(alloc, &listed, d);
@@ -214,17 +218,18 @@ pub fn saveDecompJson(
     map: *const std.AutoHashMap(u32, []const u32),
     path: []const u8,
 ) !void {
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
+    var buffer = std.ArrayList(u8).init(alloc);
+    defer buffer.deinit();
 
-    var ws = std.json.writeStream(file.writer(), .{});
+    var ws = std.json.writeStream(buffer.writer(), .{});
+
     try ws.beginObject();
+
+    var key_buf: [16]u8 = undefined;
 
     var it = map.iterator();
     while (it.next()) |entry| {
-        const key_str = try std.fmt.allocPrint(alloc, "{}", .{entry.key_ptr.*});
-        defer alloc.free(key_str);
-
+        const key_str = try std.fmt.bufPrint(&key_buf, "{}", .{entry.key_ptr.*});
         try ws.objectField(key_str);
 
         try ws.beginArray();
@@ -233,6 +238,11 @@ pub fn saveDecompJson(
     }
 
     try ws.endObject();
+
+    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+
+    try file.writeAll(buffer.items);
 }
 
 //
