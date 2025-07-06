@@ -113,8 +113,8 @@ pub fn main() !void {
         multi_cldr.deinit();
     }
 
-    try multi.saveMultiBin(&multi_ducet, "bin/multi.bin");
-    try multi.saveMultiBin(&multi_cldr, "bin/multi_cldr.bin");
+    try multi.saveMultiBin(alloc, &multi_ducet, "bin/multi.bin");
+    try multi.saveMultiBin(alloc, &multi_cldr, "bin/multi_cldr.bin");
 
     try multi.saveMultiJson(alloc, &multi_ducet, "json/multi.json");
     try multi.saveMultiJson(alloc, &multi_cldr, "json/multi_cldr.json");

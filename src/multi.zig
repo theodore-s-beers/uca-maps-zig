@@ -6,6 +6,11 @@ const util = @import("util");
 // Types
 //
 
+const MultiEntry = struct {
+    key: u64,
+    values: []const u32,
+};
+
 const MultiEntryHeader = packed struct {
     key: u64,
     len: u8,
@@ -92,18 +97,34 @@ pub fn mapMulti(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHash
     return map;
 }
 
-pub fn saveMultiBin(map: *const std.AutoHashMap(u64, []const u32), path: []const u8) !void {
+pub fn saveMultiBin(
+    alloc: std.mem.Allocator,
+    map: *const std.AutoHashMap(u64, []const u32),
+    path: []const u8,
+) !void {
     const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
     defer file.close();
 
     var bw = std.io.bufferedWriter(file.writer());
 
+    var entries = std.ArrayList(MultiEntry).init(alloc);
+    defer entries.deinit();
+
+    var it = map.iterator();
+    while (it.next()) |kv| {
+        try entries.append(MultiEntry{ .key = kv.key_ptr.*, .values = kv.value_ptr.* });
+    }
+
+    std.mem.sort(MultiEntry, entries.items, {}, comptime struct {
+        fn lessThan(_: void, lhs: MultiEntry, rhs: MultiEntry) bool {
+            return lhs.key < rhs.key;
+        }
+    }.lessThan);
+
     var payload_bytes: u16 = 0;
-    var payload_iter = map.iterator();
-    while (payload_iter.next()) |kv| {
-        const values = kv.value_ptr.*;
+    for (entries.items) |entry| {
         payload_bytes += @sizeOf(MultiEntryHeader);
-        payload_bytes += @intCast(values.len * @sizeOf(u32));
+        payload_bytes += @intCast(entry.values.len * @sizeOf(u32));
     }
 
     const main_header = MultiMapHeader{
@@ -112,16 +133,14 @@ pub fn saveMultiBin(map: *const std.AutoHashMap(u64, []const u32), path: []const
     };
     try bw.writer().writeStruct(main_header);
 
-    var write_iter = map.iterator();
-    while (write_iter.next()) |kv| {
-        const values = kv.value_ptr.*;
+    for (entries.items) |entry| {
         const entry_header = MultiEntryHeader{
-            .key = std.mem.nativeToLittle(u64, kv.key_ptr.*),
-            .len = @intCast(values.len), // u8 has no endianness
+            .key = std.mem.nativeToLittle(u64, entry.key),
+            .len = @intCast(entry.values.len), // u8 has no endianness
         };
 
         try bw.writer().writeStruct(entry_header);
-        for (values) |v| try bw.writer().writeInt(u32, v, .little);
+        for (entry.values) |v| try bw.writer().writeInt(u32, v, .little);
     }
 
     try bw.flush();
