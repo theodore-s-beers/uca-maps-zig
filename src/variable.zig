@@ -63,26 +63,22 @@ pub fn mapVariable(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoH
 }
 
 pub fn loadVariableBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, void) {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    const data = try std.fs.cwd().readFileAlloc(alloc, path, 64 * 1024);
+    defer alloc.free(data);
 
-    const file_size = try file.getEndPos();
-    const count: usize = file_size / @sizeOf(u32);
+    const count: usize = data.len / @sizeOf(u32);
 
     var map = std.AutoHashMap(u32, void).init(alloc);
     errdefer map.deinit();
 
     try map.ensureTotalCapacity(@intCast(count));
 
-    const buffer = try alloc.alloc(u32, count);
-    defer alloc.free(buffer);
+    for (0..count) |i| {
+        const offset = i * @sizeOf(u32);
 
-    var br = std.io.bufferedReader(file.reader());
-    const bytes = std.mem.sliceAsBytes(buffer);
-    try br.reader().readNoEof(bytes);
+        const bytes = data[offset..][0..@sizeOf(u32)];
+        const code_point = std.mem.readInt(u32, bytes, .little);
 
-    for (buffer) |cp_le| {
-        const code_point = std.mem.littleToNative(u32, cp_le);
         map.putAssumeCapacityNoClobber(code_point, {});
     }
 
@@ -90,17 +86,10 @@ pub fn loadVariableBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHash
 }
 
 pub fn loadVariableJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, void) {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    const data = try std.fs.cwd().readFileAlloc(alloc, path, 128 * 1024);
+    defer alloc.free(data);
 
-    const file_size = try file.getEndPos();
-    const contents = try alloc.alloc(u8, file_size);
-    defer alloc.free(contents);
-
-    var br = std.io.bufferedReader(file.reader());
-    try br.reader().readNoEof(contents);
-
-    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, contents, .{});
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
     defer parsed.deinit();
 
     const array = parsed.value.array;

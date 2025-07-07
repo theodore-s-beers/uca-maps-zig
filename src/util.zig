@@ -4,12 +4,12 @@ const std = @import("std");
 // Types
 //
 
-pub const SinglesMap = struct {
-    map: std.AutoHashMap(u32, []const u32),
+pub const MultiMap = struct {
+    map: std.AutoHashMap(u64, []const u32),
     backing: ?[]const u32,
     alloc: std.mem.Allocator,
 
-    pub fn deinit(self: *SinglesMap) void {
+    pub fn deinit(self: *MultiMap) void {
         if (self.backing) |backing| {
             self.alloc.free(backing);
         } else {
@@ -21,12 +21,12 @@ pub const SinglesMap = struct {
     }
 };
 
-pub const MultiMap = struct {
-    map: std.AutoHashMap(u64, []const u32),
+pub const SinglesMap = struct {
+    map: std.AutoHashMap(u32, []const u32),
     backing: ?[]const u32,
     alloc: std.mem.Allocator,
 
-    pub fn deinit(self: *MultiMap) void {
+    pub fn deinit(self: *SinglesMap) void {
         if (self.backing) |backing| {
             self.alloc.free(backing);
         } else {

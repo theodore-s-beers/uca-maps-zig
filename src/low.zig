@@ -67,17 +67,10 @@ pub fn mapLow(alloc: std.mem.Allocator, keys: *const []const u8) ![183]u32 {
 }
 
 pub fn loadLowJson(alloc: std.mem.Allocator, path: []const u8) ![183]u32 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    const data = try std.fs.cwd().readFileAlloc(alloc, path, 2 * 1024);
+    defer alloc.free(data);
 
-    const file_size = try file.getEndPos();
-    const contents = try alloc.alloc(u8, file_size);
-    defer alloc.free(contents);
-
-    var br = std.io.bufferedReader(file.reader());
-    try br.reader().readNoEof(contents);
-
-    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, contents, .{});
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
     defer parsed.deinit();
 
     const array = parsed.value.array;

@@ -86,6 +86,100 @@ pub fn mapMulti(alloc: std.mem.Allocator, data: *const []const u8) !util.MultiMa
     };
 }
 
+pub fn loadMultiBin(alloc: std.mem.Allocator, path: []const u8) !util.MultiMap {
+    const data = try std.fs.cwd().readFileAlloc(alloc, path, 32 * 1024);
+    defer alloc.free(data);
+
+    // Map header
+    const count = std.mem.readInt(u16, data[0..@sizeOf(u16)], .little);
+    const payload = data[@sizeOf(u16)..];
+
+    const entry_header_size = @sizeOf(u64) + @sizeOf(u8);
+    const val_count = (payload.len - (count * entry_header_size)) / @sizeOf(u32);
+
+    const vals = try alloc.alloc(u32, val_count);
+    errdefer alloc.free(vals);
+
+    var map = std.AutoHashMap(u64, []const u32).init(alloc);
+    errdefer map.deinit();
+
+    try map.ensureTotalCapacity(count);
+
+    var offset: usize = 0;
+    var vals_offset: usize = 0;
+    var n: u16 = 0;
+
+    while (n < count) : (n += 1) {
+        // Entry header: key
+        const key_bytes = payload[offset..][0..@sizeOf(u64)];
+        const key = std.mem.readInt(u64, key_bytes, .little);
+        offset += @sizeOf(u64);
+
+        // Entry header: length
+        const len = payload[offset];
+        offset += @sizeOf(u8);
+
+        // Entry values
+        const val_bytes = len * @sizeOf(u32);
+        const entry_vals = vals[vals_offset .. vals_offset + len];
+        vals_offset += len;
+
+        const payload_vals = std.mem.bytesAsSlice(u32, payload[offset..][0..val_bytes]);
+        for (payload_vals, entry_vals) |src, *dst| {
+            dst.* = std.mem.littleToNative(u32, src);
+        }
+
+        map.putAssumeCapacityNoClobber(key, entry_vals);
+        offset += val_bytes;
+    }
+
+    return util.MultiMap{
+        .map = map,
+        .backing = vals,
+        .alloc = alloc,
+    };
+}
+
+pub fn loadMultiJson(alloc: std.mem.Allocator, path: []const u8) !util.MultiMap {
+    const data = try std.fs.cwd().readFileAlloc(alloc, path, 64 * 1024);
+    defer alloc.free(data);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
+    defer parsed.deinit();
+
+    const object = parsed.value.object;
+
+    var map = std.AutoHashMap(u64, []const u32).init(alloc);
+    errdefer {
+        var it = map.iterator();
+        while (it.next()) |entry| alloc.free(entry.value_ptr.*);
+        map.deinit();
+    }
+
+    var it = object.iterator();
+    while (it.next()) |entry| {
+        const key = try std.fmt.parseInt(u64, entry.key_ptr.*, 10);
+
+        const array = entry.value_ptr.*.array;
+        const vals = try alloc.alloc(u32, array.items.len);
+
+        for (array.items, vals) |item, *dst| {
+            dst.* = switch (item) {
+                .integer => |i| @as(u32, @intCast(i)),
+                else => return error.InvalidData,
+            };
+        }
+
+        try map.put(key, vals);
+    }
+
+    return util.MultiMap{
+        .map = map,
+        .backing = null,
+        .alloc = alloc,
+    };
+}
+
 pub fn saveMultiBin(
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u64, []const u32),
@@ -107,8 +201,8 @@ pub fn saveMultiBin(
     }
 
     // Map header
-    try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u16, @intCast(map.count()))));
-    try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u16, payload_bytes)));
+    const count = std.mem.nativeToLittle(u16, @intCast(map.count()));
+    try buffer.appendSlice(std.mem.asBytes(&count));
 
     var write_iter = map.iterator();
     while (write_iter.next()) |kv| {

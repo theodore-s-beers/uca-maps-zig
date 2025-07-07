@@ -30,27 +30,22 @@ pub fn mapCCC(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
 }
 
 pub fn loadCccBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u8) {
-    var file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    const data = try std.fs.cwd().readFileAlloc(alloc, path, 8 * 1024);
+    defer alloc.free(data);
 
-    var br = std.io.bufferedReader(file.reader());
-
-    const count = try br.reader().readInt(u32, .little);
-    const entry_size = @sizeOf(u32) + @sizeOf(u8);
-
-    const bytes_needed = @as(usize, count) * entry_size;
-    if (bytes_needed > 10 * 1024) return error.FileTooLarge;
-
-    const payload = try alloc.alloc(u8, bytes_needed);
-    defer alloc.free(payload);
-
-    try br.reader().readNoEof(payload);
+    const count = std.mem.readInt(u32, data[0..@sizeOf(u32)], .little);
+    const payload = data[@sizeOf(u32)..];
 
     var map = std.AutoHashMap(u32, u8).init(alloc);
+    errdefer map.deinit();
+
     try map.ensureTotalCapacity(count);
 
-    var offset: usize = 0;
-    while (offset < bytes_needed) : (offset += entry_size) {
+    const entry_size = @sizeOf(u32) + @sizeOf(u8);
+
+    for (0..count) |i| {
+        const offset = i * entry_size;
+
         const key_bytes = payload[offset..][0..@sizeOf(u32)];
         const key = std.mem.readInt(u32, key_bytes, .little);
         const value = payload[offset + @sizeOf(u32)];
@@ -62,17 +57,10 @@ pub fn loadCccBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u
 }
 
 pub fn loadCccJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u8) {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    const data = try std.fs.cwd().readFileAlloc(alloc, path, 16 * 1024);
+    defer alloc.free(data);
 
-    const file_size = try file.getEndPos();
-    const contents = try alloc.alloc(u8, file_size);
-    defer alloc.free(contents);
-
-    var br = std.io.bufferedReader(file.reader());
-    try br.reader().readNoEof(contents);
-
-    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, contents, .{});
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
     defer parsed.deinit();
 
     const object = parsed.value.object;
