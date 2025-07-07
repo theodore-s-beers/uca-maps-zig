@@ -90,7 +90,7 @@ pub fn main() !void {
     std.debug.assert(decomp_from_bin.map.count() == decomps.map.count());
 
     //
-    // FCD
+    // Generate FCD map
     //
 
     start = std.time.milliTimestamp();
@@ -105,7 +105,20 @@ pub fn main() !void {
     std.debug.print("FCD: {} ms\n", .{end - start});
 
     //
-    // Low code point weights
+    // Test loading FCD map
+    //
+
+    var fcd_from_bin = try fcd.loadFcdBin(alloc, "bin/fcd.bin");
+    defer fcd_from_bin.deinit();
+
+    var fcd_from_json = try fcd.loadFcdJson(alloc, "json/fcd.json");
+    defer fcd_from_json.deinit();
+
+    std.debug.assert(fcd_from_bin.count() == fcd_from_json.count());
+    std.debug.assert(fcd_from_bin.count() == fcd_map.count());
+
+    //
+    // Generate low code point maps
     //
 
     start = std.time.milliTimestamp();
@@ -123,6 +136,16 @@ pub fn main() !void {
 
     end = std.time.milliTimestamp();
     std.debug.print("Low-code-point (CLDR): {} ms\n", .{end - start});
+
+    //
+    // Test loading low code point maps
+    //
+
+    const low_from_json_ducet = try low.loadLowJson(alloc, "json/low.json");
+    const low_from_json_cldr = try low.loadLowJson(alloc, "json/low_cldr.json");
+
+    std.debug.assert(std.mem.eql(u32, &low_ducet, &low_from_json_ducet));
+    std.debug.assert(std.mem.eql(u32, &low_cldr, &low_from_json_cldr));
 
     //
     // Single-code-point weights

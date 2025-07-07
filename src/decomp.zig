@@ -1,5 +1,9 @@
 const std = @import("std");
 
+//
+// Types
+//
+
 const DecompMap = struct {
     map: std.AutoHashMap(u32, []const u32),
     backing: ?[]const u32,

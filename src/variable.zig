@@ -83,7 +83,7 @@ pub fn loadVariableBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHash
 
     for (buffer) |cp_le| {
         const code_point = std.mem.littleToNative(u32, cp_le);
-        try map.put(code_point, {});
+        map.putAssumeCapacityNoClobber(code_point, {});
     }
 
     return map;
@@ -116,7 +116,7 @@ pub fn loadVariableJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHas
             else => return error.InvalidData,
         };
 
-        try map.put(code_point, {});
+        map.putAssumeCapacityNoClobber(code_point, {});
     }
 
     return map;

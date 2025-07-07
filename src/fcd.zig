@@ -78,6 +78,75 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
     return fcd_map;
 }
 
+pub fn loadFcdBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u16) {
+    var file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    var br = std.io.bufferedReader(file.reader());
+
+    const count = try br.reader().readInt(u32, .little);
+    const entry_size = @sizeOf(u32) + @sizeOf(u16);
+
+    const bytes_needed = @as(usize, count) * entry_size;
+    if (bytes_needed > 10 * 1024) return error.FileTooLarge;
+
+    const payload = try alloc.alloc(u8, bytes_needed);
+    defer alloc.free(payload);
+
+    try br.reader().readNoEof(payload);
+
+    var map = std.AutoHashMap(u32, u16).init(alloc);
+    try map.ensureTotalCapacity(count);
+
+    var offset: usize = 0;
+    while (offset < bytes_needed) : (offset += entry_size) {
+        const key_bytes = payload[offset..][0..@sizeOf(u32)];
+        const key = std.mem.readInt(u32, key_bytes, .little);
+
+        const value_bytes = payload[offset + @sizeOf(u32) ..][0..@sizeOf(u16)];
+        const value = std.mem.readInt(u16, value_bytes, .little);
+
+        map.putAssumeCapacityNoClobber(key, value);
+    }
+
+    return map;
+}
+
+pub fn loadFcdJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u16) {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    const file_size = try file.getEndPos();
+    const contents = try alloc.alloc(u8, file_size);
+    defer alloc.free(contents);
+
+    var br = std.io.bufferedReader(file.reader());
+    try br.reader().readNoEof(contents);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, contents, .{});
+    defer parsed.deinit();
+
+    const object = parsed.value.object;
+
+    var map = std.AutoHashMap(u32, u16).init(alloc);
+    errdefer map.deinit();
+
+    try map.ensureTotalCapacity(@intCast(object.count()));
+
+    var it = object.iterator();
+    while (it.next()) |entry| {
+        const key = try std.fmt.parseInt(u32, entry.key_ptr.*, 10);
+        const value = switch (entry.value_ptr.*) {
+            .integer => |i| @as(u16, @intCast(i)),
+            else => return error.InvalidData,
+        };
+
+        map.putAssumeCapacityNoClobber(key, value);
+    }
+
+    return map;
+}
+
 pub fn saveFcdBin(
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, u16),

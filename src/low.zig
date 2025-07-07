@@ -2,10 +2,6 @@ const std = @import("std");
 
 const util = @import("util");
 
-//
-// Public functions
-//
-
 pub fn mapLow(alloc: std.mem.Allocator, keys: *const []const u8) ![183]u32 {
     var map = std.AutoHashMap(u32, u32).init(alloc);
     defer map.deinit();
@@ -68,6 +64,34 @@ pub fn mapLow(alloc: std.mem.Allocator, keys: *const []const u8) ![183]u32 {
     while (it.next()) |kv| arr[kv.key_ptr.*] = kv.value_ptr.*;
 
     return arr;
+}
+
+pub fn loadLowJson(alloc: std.mem.Allocator, path: []const u8) ![183]u32 {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    const file_size = try file.getEndPos();
+    const contents = try alloc.alloc(u8, file_size);
+    defer alloc.free(contents);
+
+    var br = std.io.bufferedReader(file.reader());
+    try br.reader().readNoEof(contents);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, contents, .{});
+    defer parsed.deinit();
+
+    const array = parsed.value.array;
+    if (array.items.len != 183) return error.InvalidArraySize;
+
+    var result: [183]u32 = undefined;
+    for (array.items, &result) |item, *dst| {
+        dst.* = switch (item) {
+            .integer => |i| @as(u32, @intCast(i)),
+            else => return error.InvalidData,
+        };
+    }
+
+    return result;
 }
 
 pub fn saveLowJson(arr: *const [183]u32, path: []const u8) !void {

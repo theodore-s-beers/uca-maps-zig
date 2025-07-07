@@ -90,7 +90,7 @@ pub fn loadCccJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(
             else => return error.InvalidData,
         };
 
-        try map.put(key, value);
+        map.putAssumeCapacityNoClobber(key, value);
     }
 
     return map;
