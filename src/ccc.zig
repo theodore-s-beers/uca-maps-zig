@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub fn mapCCC(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMap(u32, u8) {
     var map = std.AutoHashMap(u32, u8).init(alloc);
+    errdefer map.deinit();
 
     var fields = std.ArrayList([]const u8).init(alloc);
     defer fields.deinit();
@@ -33,22 +34,20 @@ pub fn loadCccBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u
     const data = try std.fs.cwd().readFileAlloc(alloc, path, 8 * 1024);
     defer alloc.free(data);
 
-    const count = std.mem.readInt(u32, data[0..@sizeOf(u32)], .little);
-    const payload = data[@sizeOf(u32)..];
+    const entry_size = @sizeOf(u32) + @sizeOf(u8);
+    const count: u32 = @intCast(data.len / entry_size);
 
     var map = std.AutoHashMap(u32, u8).init(alloc);
     errdefer map.deinit();
 
     try map.ensureTotalCapacity(count);
 
-    const entry_size = @sizeOf(u32) + @sizeOf(u8);
-
     for (0..count) |i| {
         const offset = i * entry_size;
 
-        const key_bytes = payload[offset..][0..@sizeOf(u32)];
+        const key_bytes = data[offset..][0..@sizeOf(u32)];
         const key = std.mem.readInt(u32, key_bytes, .little);
-        const value = payload[offset + @sizeOf(u32)];
+        const value = data[offset + @sizeOf(u32)];
 
         map.putAssumeCapacityNoClobber(key, value);
     }
@@ -91,9 +90,6 @@ pub fn saveCccBin(
 ) !void {
     var buffer = std.ArrayList(u8).init(alloc);
     defer buffer.deinit();
-
-    const count = std.mem.nativeToLittle(u32, @intCast(map.count()));
-    try buffer.appendSlice(std.mem.asBytes(&count)); // Map header
 
     var it = map.iterator();
     while (it.next()) |kv| {
