@@ -29,7 +29,7 @@ pub fn mapCCC(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
     return map;
 }
 
-pub fn loadCCC(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u8) {
+pub fn loadCccBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u8) {
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
@@ -56,6 +56,41 @@ pub fn loadCCC(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32,
         const value = payload[offset + @sizeOf(u32)];
 
         map.putAssumeCapacityNoClobber(key, value);
+    }
+
+    return map;
+}
+
+pub fn loadCccJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u8) {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    const file_size = try file.getEndPos();
+    const contents = try alloc.alloc(u8, file_size);
+    defer alloc.free(contents);
+
+    var br = std.io.bufferedReader(file.reader());
+    try br.reader().readNoEof(contents);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, contents, .{});
+    defer parsed.deinit();
+
+    const object = parsed.value.object;
+
+    var map = std.AutoHashMap(u32, u8).init(alloc);
+    errdefer map.deinit();
+
+    try map.ensureTotalCapacity(@intCast(object.count()));
+
+    var it = object.iterator();
+    while (it.next()) |entry| {
+        const key = try std.fmt.parseInt(u32, entry.key_ptr.*, 10);
+        const value = switch (entry.value_ptr.*) {
+            .integer => |i| @as(u8, @intCast(i)),
+            else => return error.InvalidData,
+        };
+
+        try map.put(key, value);
     }
 
     return map;

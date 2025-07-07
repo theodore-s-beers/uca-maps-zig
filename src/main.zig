@@ -34,7 +34,7 @@ pub fn main() !void {
     std.debug.print("Load data: {} ms\n", .{end - start});
 
     //
-    // Canonical combining classes
+    // Generate CCC map
     //
 
     start = std.time.milliTimestamp();
@@ -49,23 +49,45 @@ pub fn main() !void {
     std.debug.print("CCC: {} ms\n", .{end - start});
 
     //
-    // Decompositions
+    // Test loading CCC map
+    //
+
+    var ccc_from_bin = try ccc.loadCccBin(alloc, "bin/ccc.bin");
+    defer ccc_from_bin.deinit();
+
+    var ccc_from_json = try ccc.loadCccJson(alloc, "json/ccc.json");
+    defer ccc_from_json.deinit();
+
+    std.debug.assert(ccc_from_bin.count() == ccc_from_json.count());
+    std.debug.assert(ccc_from_bin.count() == ccc_map.count());
+
+    //
+    // Generate decomposition map
     //
 
     start = std.time.milliTimestamp();
 
     var decomps = try decomp.mapDecomps(alloc, &uni_data);
-    defer {
-        var it = decomps.iterator();
-        while (it.next()) |entry| alloc.free(entry.value_ptr.*);
-        decomps.deinit();
-    }
+    defer decomps.deinit();
 
-    try decomp.saveDecompBin(alloc, &decomps, "bin/decomp.bin");
-    try decomp.saveDecompJson(alloc, &decomps, "json/decomp.json");
+    try decomp.saveDecompBin(alloc, &decomps.map, "bin/decomp.bin");
+    try decomp.saveDecompJson(alloc, &decomps.map, "json/decomp.json");
 
     end = std.time.milliTimestamp();
     std.debug.print("Decompositions: {} ms\n", .{end - start});
+
+    //
+    // Test loading decomposition map
+    //
+
+    var decomp_from_bin = try decomp.loadDecompBin(alloc, "bin/decomp.bin");
+    defer decomp_from_bin.deinit();
+
+    var decomp_from_json = try decomp.loadDecompJson(alloc, "json/decomp.json");
+    defer decomp_from_json.deinit();
+
+    std.debug.assert(decomp_from_bin.map.count() == decomp_from_json.map.count());
+    std.debug.assert(decomp_from_bin.map.count() == decomps.map.count());
 
     //
     // FCD

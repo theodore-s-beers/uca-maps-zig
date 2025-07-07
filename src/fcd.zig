@@ -8,14 +8,14 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
     // Load decomposition map
     //
 
-    var decomp_data = try decomp.loadDecomps(alloc, "bin/decomp.bin");
+    var decomp_data = try decomp.loadDecompBin(alloc, "bin/decomp.bin");
     defer decomp_data.deinit();
 
     //
     // Load CCC map
     //
 
-    var ccc_map = try ccc.loadCCC(alloc, "bin/ccc.bin");
+    var ccc_map = try ccc.loadCccBin(alloc, "bin/ccc.bin");
     defer ccc_map.deinit();
 
     //

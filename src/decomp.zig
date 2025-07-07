@@ -1,13 +1,19 @@
 const std = @import("std");
 
 const DecompMap = struct {
-    map: std.AutoHashMap(u32, []u32),
-    backing: []u32,
+    map: std.AutoHashMap(u32, []const u32),
+    backing: ?[]const u32,
     alloc: std.mem.Allocator,
 
     pub fn deinit(self: *DecompMap) void {
+        if (self.backing) |backing| {
+            self.alloc.free(backing);
+        } else {
+            var it = self.map.iterator();
+            while (it.next()) |entry| self.alloc.free(entry.value_ptr.*);
+        }
+
         self.map.deinit();
-        self.alloc.free(self.backing);
     }
 };
 
@@ -15,7 +21,7 @@ const DecompMap = struct {
 // Public functions
 //
 
-pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMap(u32, []const u32) {
+pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !DecompMap {
     var listed = std.AutoHashMap(u32, []const u32).init(alloc);
     defer {
         var it = listed.iterator();
@@ -115,10 +121,14 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHa
         try canonical.put(code_point, final_decomp);
     }
 
-    return canonical;
+    return DecompMap{
+        .map = canonical,
+        .backing = null,
+        .alloc = alloc,
+    };
 }
 
-pub fn loadDecomps(alloc: std.mem.Allocator, path: []const u8) !DecompMap {
+pub fn loadDecompBin(alloc: std.mem.Allocator, path: []const u8) !DecompMap {
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
@@ -137,7 +147,7 @@ pub fn loadDecomps(alloc: std.mem.Allocator, path: []const u8) !DecompMap {
     const vals = try alloc.alloc(u32, val_count);
     errdefer alloc.free(vals);
 
-    var map = std.AutoHashMap(u32, []u32).init(alloc);
+    var map = std.AutoHashMap(u32, []const u32).init(alloc);
     try map.ensureTotalCapacity(count);
 
     var offset: usize = 0;
@@ -168,6 +178,49 @@ pub fn loadDecomps(alloc: std.mem.Allocator, path: []const u8) !DecompMap {
     return DecompMap{
         .map = map,
         .backing = vals,
+        .alloc = alloc,
+    };
+}
+
+pub fn loadDecompJson(alloc: std.mem.Allocator, path: []const u8) !DecompMap {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    const file_size = try file.getEndPos();
+    const contents = try alloc.alloc(u8, file_size);
+    defer alloc.free(contents);
+
+    var br = std.io.bufferedReader(file.reader());
+    try br.reader().readNoEof(contents);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, contents, .{});
+    defer parsed.deinit();
+
+    const object = parsed.value.object;
+
+    var map = std.AutoHashMap(u32, []const u32).init(alloc);
+    errdefer map.deinit();
+
+    var it = object.iterator();
+    while (it.next()) |entry| {
+        const key = try std.fmt.parseInt(u32, entry.key_ptr.*, 10);
+
+        const array = entry.value_ptr.*.array;
+        const vals = try alloc.alloc(u32, array.items.len);
+
+        for (array.items, vals) |item, *dst| {
+            dst.* = switch (item) {
+                .integer => |i| @as(u32, @intCast(i)),
+                else => return error.InvalidData,
+            };
+        }
+
+        try map.put(key, vals);
+    }
+
+    return DecompMap{
+        .map = map,
+        .backing = null,
         .alloc = alloc,
     };
 }
