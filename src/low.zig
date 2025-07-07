@@ -74,12 +74,11 @@ pub fn loadLowJson(alloc: std.mem.Allocator, path: []const u8) ![183]u32 {
     defer parsed.deinit();
 
     const array = parsed.value.array;
-    if (array.items.len != 183) return error.InvalidArraySize;
 
     var result: [183]u32 = undefined;
     for (array.items, &result) |item, *dst| {
         dst.* = switch (item) {
-            .integer => |i| @as(u32, @intCast(i)),
+            .integer => |n| @as(u32, @intCast(n)),
             else => return error.InvalidData,
         };
     }
