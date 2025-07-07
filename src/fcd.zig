@@ -8,12 +8,8 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
     // Load decomposition map
     //
 
-    var decomp_map = try decomp.loadDecomps(alloc, "bin/decomp.bin");
-    defer {
-        var it = decomp_map.iterator();
-        while (it.next()) |entry| alloc.free(entry.value_ptr.*);
-        decomp_map.deinit();
-    }
+    var decomp_data = try decomp.loadDecomps(alloc, "bin/decomp.bin");
+    defer decomp_data.deinit();
 
     //
     // Load CCC map
@@ -68,7 +64,7 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
             continue;
         }
 
-        const decomps: []const u32 = decomp_map.get(code_point) orelse continue;
+        const decomps: []const u32 = decomp_data.map.get(code_point) orelse continue;
 
         const first_ccc: u8 = ccc_map.get(decomps[0]) orelse 0;
         const last_ccc: u8 = ccc_map.get(decomps[decomps.len - 1]) orelse 0;
