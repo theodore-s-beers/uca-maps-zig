@@ -6,6 +6,7 @@ const fcd = @import("fcd");
 const low = @import("low");
 const multi = @import("multi");
 const single = @import("single");
+const variable = @import("variable");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
@@ -168,4 +169,22 @@ pub fn main() !void {
 
     end = std.time.milliTimestamp();
     std.debug.print("Multi-code-point (CLDR): {} ms\n", .{end - start});
+
+    //
+    // Variable weights
+    //
+
+    start = std.time.milliTimestamp();
+
+    var variable_set = try variable.mapVariable(alloc, &keys_ducet);
+    defer variable_set.deinit();
+
+    try variable.saveVariableBin(alloc, &variable_set, "bin/variable.bin");
+    try variable.saveVariableJson(alloc, &variable_set, "json/variable.json");
+
+    end = std.time.milliTimestamp();
+    std.debug.print("Variable weights: {} ms\n", .{end - start});
+
+    var variable_loaded = try variable.loadVariableBin(alloc, "bin/variable.bin");
+    defer variable_loaded.deinit();
 }
