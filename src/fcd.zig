@@ -4,7 +4,7 @@ const ccc = @import("ccc");
 const decomp = @import("decomp");
 const util = @import("util");
 
-pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMap(u32, u16) {
+pub fn mapFCD(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, u16) {
     //
     // Load decomposition map
     //
@@ -33,7 +33,7 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
     var fields = std.ArrayList([]const u8).init(alloc);
     defer fields.deinit();
 
-    var line_iter = std.mem.splitScalar(u8, data.*, '\n');
+    var line_iter = std.mem.splitScalar(u8, data, '\n');
 
     while (line_iter.next()) |line| {
         if (line.len == 0) continue;

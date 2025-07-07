@@ -40,7 +40,7 @@ pub fn main() !void {
 
     start = std.time.milliTimestamp();
 
-    var ccc_map = try ccc.mapCCC(alloc, &uni_data);
+    var ccc_map = try ccc.mapCCC(alloc, uni_data);
     defer ccc_map.deinit();
 
     try ccc.saveCccBin(alloc, &ccc_map, "bin/ccc.bin");
@@ -74,7 +74,7 @@ pub fn main() !void {
 
     start = std.time.milliTimestamp();
 
-    var decomps = try decomp.mapDecomps(alloc, &uni_data);
+    var decomps = try decomp.mapDecomps(alloc, uni_data);
     defer decomps.deinit();
 
     try decomp.saveDecompBin(alloc, &decomps.map, "bin/decomp.bin");
@@ -108,7 +108,7 @@ pub fn main() !void {
 
     start = std.time.milliTimestamp();
 
-    var fcd_map = try fcd.mapFCD(alloc, &uni_data);
+    var fcd_map = try fcd.mapFCD(alloc, uni_data);
     defer fcd_map.deinit();
 
     try fcd.saveFcdBin(alloc, &fcd_map, "bin/fcd.bin");
@@ -142,7 +142,7 @@ pub fn main() !void {
 
     start = std.time.milliTimestamp();
 
-    const low_ducet = try low.mapLow(alloc, &keys_ducet);
+    const low_ducet = try low.mapLow(alloc, keys_ducet);
     try low.saveLowJson(&low_ducet, "json/low.json");
 
     end = std.time.milliTimestamp();
@@ -150,7 +150,7 @@ pub fn main() !void {
 
     start = std.time.milliTimestamp();
 
-    const low_cldr = try low.mapLow(alloc, &keys_cldr);
+    const low_cldr = try low.mapLow(alloc, keys_cldr);
     try low.saveLowJson(&low_cldr, "json/low_cldr.json");
 
     end = std.time.milliTimestamp();
@@ -173,7 +173,7 @@ pub fn main() !void {
 
     start = std.time.milliTimestamp();
 
-    var singles_ducet = try single.mapSingles(alloc, &keys_ducet);
+    var singles_ducet = try single.mapSingles(alloc, keys_ducet);
     defer singles_ducet.deinit();
 
     try single.saveSinglesBin(alloc, &singles_ducet.map, "bin/singles.bin");
@@ -184,7 +184,7 @@ pub fn main() !void {
 
     start = std.time.milliTimestamp();
 
-    var singles_cldr = try single.mapSingles(alloc, &keys_cldr);
+    var singles_cldr = try single.mapSingles(alloc, keys_cldr);
     defer singles_cldr.deinit();
 
     try single.saveSinglesBin(alloc, &singles_cldr.map, "bin/singles_cldr.bin");
@@ -233,7 +233,7 @@ pub fn main() !void {
 
     start = std.time.milliTimestamp();
 
-    var multi_ducet = try multi.mapMulti(alloc, &keys_ducet);
+    var multi_ducet = try multi.mapMulti(alloc, keys_ducet);
     defer multi_ducet.deinit();
 
     try multi.saveMultiBin(alloc, &multi_ducet.map, "bin/multi.bin");
@@ -244,7 +244,7 @@ pub fn main() !void {
 
     start = std.time.milliTimestamp();
 
-    var multi_cldr = try multi.mapMulti(alloc, &keys_cldr);
+    var multi_cldr = try multi.mapMulti(alloc, keys_cldr);
     defer multi_cldr.deinit();
 
     try multi.saveMultiBin(alloc, &multi_cldr.map, "bin/multi_cldr.bin");
@@ -293,7 +293,7 @@ pub fn main() !void {
 
     start = std.time.milliTimestamp();
 
-    var variable_set = try variable.mapVariable(alloc, &keys_ducet);
+    var variable_set = try variable.mapVariable(alloc, keys_ducet);
     defer variable_set.deinit();
 
     try variable.saveVariableBin(alloc, &variable_set, "bin/variable.bin");

@@ -6,7 +6,7 @@ const util = @import("util");
 // Public functions
 //
 
-pub fn mapMulti(alloc: std.mem.Allocator, data: *const []const u8) !util.MultiMap {
+pub fn mapMulti(alloc: std.mem.Allocator, data: []const u8) !util.MultiMap {
     var map = std.AutoHashMap(u64, []const u32).init(alloc);
     errdefer {
         var it = map.iterator();
@@ -20,7 +20,7 @@ pub fn mapMulti(alloc: std.mem.Allocator, data: *const []const u8) !util.MultiMa
     var weights = std.ArrayList(u32).init(alloc);
     errdefer weights.deinit();
 
-    var line_it = std.mem.splitScalar(u8, data.*, '\n');
+    var line_it = std.mem.splitScalar(u8, data, '\n');
     while (line_it.next()) |line| {
         if (line.len == 0 or !util.HEX.isSet(line[0])) continue;
 
@@ -40,7 +40,7 @@ pub fn mapMulti(alloc: std.mem.Allocator, data: *const []const u8) !util.MultiMa
         std.debug.assert(1 <= points.items.len and points.items.len <= 3);
         if (points.items.len == 1) continue;
 
-        const key = packCodePoints(&points.items);
+        const key = packCodePoints(points.items);
 
         const remainder = split_semi.next() orelse return error.InvalidData;
         var split_hash = std.mem.splitScalar(u8, remainder, '#');
@@ -262,15 +262,15 @@ pub fn saveMultiJson(
 // Private functions
 //
 
-fn packCodePoints(code_points: *const []const u32) u64 {
+fn packCodePoints(code_points: []const u32) u64 {
     switch (code_points.len) {
         2 => {
-            return (@as(u64, code_points.*[0]) << 21) | @as(u64, code_points.*[1]);
+            return (@as(u64, code_points[0]) << 21) | @as(u64, code_points[1]);
         },
         3 => {
-            return (@as(u64, code_points.*[0]) << 42) |
-                (@as(u64, code_points.*[1]) << 21) |
-                @as(u64, code_points.*[2]);
+            return (@as(u64, code_points[0]) << 42) |
+                (@as(u64, code_points[1]) << 21) |
+                @as(u64, code_points[2]);
         },
         else => unreachable,
     }

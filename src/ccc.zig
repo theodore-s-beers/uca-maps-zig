@@ -1,13 +1,13 @@
 const std = @import("std");
 
-pub fn mapCCC(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMap(u32, u8) {
+pub fn mapCCC(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, u8) {
     var map = std.AutoHashMap(u32, u8).init(alloc);
     errdefer map.deinit();
 
     var fields = std.ArrayList([]const u8).init(alloc);
     defer fields.deinit();
 
-    var lines = std.mem.splitScalar(u8, data.*, '\n');
+    var lines = std.mem.splitScalar(u8, data, '\n');
     while (lines.next()) |line| {
         if (line.len == 0) continue;
 

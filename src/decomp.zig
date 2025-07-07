@@ -6,7 +6,7 @@ const util = @import("util");
 // Public functions
 //
 
-pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !util.SinglesMap {
+pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
     var listed = std.AutoHashMap(u32, []const u32).init(alloc);
     defer {
         var it = listed.iterator();
@@ -27,7 +27,7 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !util.Singl
     var listed_decomps = std.ArrayList(u32).init(alloc);
     defer listed_decomps.deinit();
 
-    var line_it = std.mem.splitScalar(u8, data.*, '\n');
+    var line_it = std.mem.splitScalar(u8, data, '\n');
 
     while (line_it.next()) |line| {
         if (line.len == 0) continue;

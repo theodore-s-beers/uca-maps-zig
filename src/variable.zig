@@ -2,14 +2,14 @@ const std = @import("std");
 
 const util = @import("util");
 
-pub fn mapVariable(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMap(u32, void) {
+pub fn mapVariable(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, void) {
     var map = std.AutoHashMap(u32, void).init(alloc);
     errdefer map.deinit();
 
     var points = std.ArrayList(u32).init(alloc);
     defer points.deinit();
 
-    var line_it = std.mem.splitScalar(u8, data.*, '\n');
+    var line_it = std.mem.splitScalar(u8, data, '\n');
     outer: while (line_it.next()) |line| {
         if (line.len == 0 or !util.HEX.isSet(line[0])) continue;
 

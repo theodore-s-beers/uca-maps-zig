@@ -6,7 +6,7 @@ const util = @import("util");
 // Public functions
 //
 
-pub fn mapSingles(alloc: std.mem.Allocator, data: *const []const u8) !util.SinglesMap {
+pub fn mapSingles(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
     var map = std.AutoHashMap(u32, []const u32).init(alloc);
     errdefer {
         var it = map.iterator();
@@ -20,7 +20,7 @@ pub fn mapSingles(alloc: std.mem.Allocator, data: *const []const u8) !util.Singl
     var weights = std.ArrayList(u32).init(alloc);
     defer weights.deinit();
 
-    var line_it = std.mem.splitScalar(u8, data.*, '\n');
+    var line_it = std.mem.splitScalar(u8, data, '\n');
     while (line_it.next()) |line| {
         if (line.len == 0 or !util.HEX.isSet(line[0])) continue;
 
