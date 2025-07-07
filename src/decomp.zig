@@ -15,6 +15,11 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !util.Singl
     }
 
     var canonical = std.AutoHashMap(u32, []const u32).init(alloc);
+    errdefer {
+        var it = canonical.iterator();
+        while (it.next()) |entry| alloc.free(entry.value_ptr.*);
+        canonical.deinit();
+    }
 
     var fields = std.ArrayList([]const u8).init(alloc);
     defer fields.deinit();
@@ -177,7 +182,11 @@ pub fn loadDecompJson(alloc: std.mem.Allocator, path: []const u8) !util.SinglesM
     const object = parsed.value.object;
 
     var map = std.AutoHashMap(u32, []const u32).init(alloc);
-    errdefer map.deinit();
+    errdefer {
+        var it = map.iterator();
+        while (it.next()) |entry| alloc.free(entry.value_ptr.*);
+        map.deinit();
+    }
 
     var it = object.iterator();
     while (it.next()) |entry| {
@@ -185,6 +194,7 @@ pub fn loadDecompJson(alloc: std.mem.Allocator, path: []const u8) !util.SinglesM
 
         const array = entry.value_ptr.*.array;
         const vals = try alloc.alloc(u32, array.items.len);
+        errdefer alloc.free(vals);
 
         for (array.items, vals) |item, *dst| {
             dst.* = switch (item) {
