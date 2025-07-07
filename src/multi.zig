@@ -6,7 +6,7 @@ const util = @import("util");
 // Public functions
 //
 
-pub fn mapMulti(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMap(u64, []const u32) {
+pub fn mapMulti(alloc: std.mem.Allocator, data: *const []const u8) !util.MultiMap {
     var map = std.AutoHashMap(u64, []const u32).init(alloc);
     errdefer {
         var it = map.iterator();
@@ -79,7 +79,11 @@ pub fn mapMulti(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHash
         try map.put(key, try weights.toOwnedSlice());
     }
 
-    return map;
+    return util.MultiMap{
+        .map = map,
+        .backing = null,
+        .alloc = alloc,
+    };
 }
 
 pub fn saveMultiBin(

@@ -196,20 +196,16 @@ pub fn main() !void {
     std.debug.assert(singles_from_bin_cldr.map.count() == singles_cldr.map.count());
 
     //
-    // Multi-code-point weights
+    // Generate multi-code-point maps
     //
 
     start = std.time.milliTimestamp();
 
     var multi_ducet = try multi.mapMulti(alloc, &keys_ducet);
-    defer {
-        var it = multi_ducet.iterator();
-        while (it.next()) |kv| alloc.free(kv.value_ptr.*);
-        multi_ducet.deinit();
-    }
+    defer multi_ducet.deinit();
 
-    try multi.saveMultiBin(alloc, &multi_ducet, "bin/multi.bin");
-    try multi.saveMultiJson(alloc, &multi_ducet, "json/multi.json");
+    try multi.saveMultiBin(alloc, &multi_ducet.map, "bin/multi.bin");
+    try multi.saveMultiJson(alloc, &multi_ducet.map, "json/multi.json");
 
     end = std.time.milliTimestamp();
     std.debug.print("Multi-code-point (DUCET): {} ms\n", .{end - start});
@@ -217,14 +213,10 @@ pub fn main() !void {
     start = std.time.milliTimestamp();
 
     var multi_cldr = try multi.mapMulti(alloc, &keys_cldr);
-    defer {
-        var it = multi_cldr.iterator();
-        while (it.next()) |kv| alloc.free(kv.value_ptr.*);
-        multi_cldr.deinit();
-    }
+    defer multi_cldr.deinit();
 
-    try multi.saveMultiBin(alloc, &multi_cldr, "bin/multi_cldr.bin");
-    try multi.saveMultiJson(alloc, &multi_cldr, "json/multi_cldr.json");
+    try multi.saveMultiBin(alloc, &multi_cldr.map, "bin/multi_cldr.bin");
+    try multi.saveMultiJson(alloc, &multi_cldr.map, "json/multi_cldr.json");
 
     end = std.time.milliTimestamp();
     std.debug.print("Multi-code-point (CLDR): {} ms\n", .{end - start});
