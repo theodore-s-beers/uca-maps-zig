@@ -3,25 +3,6 @@ const std = @import("std");
 const util = @import("util");
 
 //
-// Types
-//
-
-const MultiEntry = struct {
-    key: u64,
-    values: []const u32,
-};
-
-const MultiEntryHeader = packed struct {
-    key: u64,
-    len: u8,
-};
-
-const MultiMapHeader = packed struct {
-    count: u16,
-    total_bytes: u16,
-};
-
-//
 // Public functions
 //
 
@@ -110,11 +91,15 @@ pub fn saveMultiBin(
     defer buffer.deinit();
 
     var payload_bytes: u16 = 0;
+
     var payload_iter = map.iterator();
     while (payload_iter.next()) |kv| {
+        // Entry header
         payload_bytes += @sizeOf(u64); // Key
-        payload_bytes += @sizeOf(u8); // Number of values
-        payload_bytes += @intCast(kv.value_ptr.len * @sizeOf(u32)); // Values
+        payload_bytes += @sizeOf(u8); // Length
+
+        // Entry values
+        payload_bytes += @intCast(kv.value_ptr.len * @sizeOf(u32));
     }
 
     // Map header
@@ -123,9 +108,11 @@ pub fn saveMultiBin(
 
     var write_iter = map.iterator();
     while (write_iter.next()) |kv| {
-        // Entry header
-        try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u64, kv.key_ptr.*)));
+        const key = std.mem.nativeToLittle(u64, kv.key_ptr.*);
         const len: u8 = @intCast(kv.value_ptr.len);
+
+        // Entry header
+        try buffer.appendSlice(std.mem.asBytes(&key));
         try buffer.appendSlice(std.mem.asBytes(&len));
 
         // Entry values

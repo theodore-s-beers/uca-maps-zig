@@ -30,7 +30,7 @@ pub fn main() !void {
     defer alloc.free(keys_cldr);
 
     var end = std.time.milliTimestamp();
-    std.debug.print("Data loading: {} ms\n", .{end - start});
+    std.debug.print("Load data: {} ms\n", .{end - start});
 
     //
     // Canonical combining classes

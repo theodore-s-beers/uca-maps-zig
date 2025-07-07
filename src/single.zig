@@ -3,20 +3,6 @@ const std = @import("std");
 const util = @import("util");
 
 //
-// Types
-//
-
-const SinglesEntryHeader = packed struct {
-    key: u32,
-    len: u8,
-};
-
-const SinglesMapHeader = packed struct {
-    count: u32,
-    total_bytes: u32,
-};
-
-//
 // Public functions
 //
 
@@ -102,10 +88,8 @@ pub fn loadSingles(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(
 
     var br = std.io.bufferedReader(file.reader());
 
-    const main_header = try br.reader().readStruct(SinglesMapHeader);
-    const count = std.mem.littleToNative(u32, main_header.count);
-
-    const total_bytes = std.mem.littleToNative(u32, main_header.total_bytes);
+    const count = try br.reader().readInt(u32);
+    const total_bytes = try br.reader().readInt(u32);
     if (total_bytes > 1024 * 1024) return error.FileTooLarge;
 
     const payload = try alloc.alloc(u8, total_bytes);
@@ -120,18 +104,16 @@ pub fn loadSingles(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(
     var n: u32 = 0;
 
     while (n < count) : (n += 1) {
-        const header = std.mem.bytesToValue(
-            SinglesEntryHeader,
-            payload[offset..][0..@sizeOf(SinglesEntryHeader)],
-        );
-        offset += @sizeOf(SinglesEntryHeader);
+        const key_bytes = payload[offset..][0..@sizeOf(u32)];
+        const key = std.mem.readInt(u32, key_bytes, .little);
+        offset += @sizeOf(u32);
 
-        const key = std.mem.littleToNative(u32, header.key);
+        const len = payload[offset];
+        offset += @sizeOf(u8);
 
-        const values_len = header.len; // u8 has no endianness
-        const value_bytes = values_len * @sizeOf(u32);
+        const value_bytes = len * @sizeOf(u32);
 
-        const vals = try alloc.alloc(u32, values_len);
+        const vals = try alloc.alloc(u32, len);
         errdefer alloc.free(vals);
 
         const payload_vals = std.mem.bytesAsSlice(u32, payload[offset..][0..value_bytes]);
@@ -140,7 +122,6 @@ pub fn loadSingles(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(
         }
 
         map.putAssumeCapacityNoClobber(key, vals);
-        offset += value_bytes;
     }
 
     return map;
@@ -157,27 +138,32 @@ pub fn saveSinglesBin(
     var payload_bytes: u32 = 0;
     var payload_iter = map.iterator();
     while (payload_iter.next()) |kv| {
-        const values = kv.value_ptr.*;
-        payload_bytes += @sizeOf(SinglesEntryHeader);
-        payload_bytes += @intCast(values.len * @sizeOf(u32));
+        // Entry header
+        payload_bytes += @sizeOf(u32); // Key
+        payload_bytes += @sizeOf(u8); // Length
+
+        // Entry values
+        payload_bytes += @intCast(kv.value_ptr.len * @sizeOf(u32));
     }
 
-    const main_header = SinglesMapHeader{
-        .count = std.mem.nativeToLittle(u32, @intCast(map.count())),
-        .total_bytes = std.mem.nativeToLittle(u32, payload_bytes),
-    };
-    try buffer.appendSlice(std.mem.asBytes(&main_header));
+    const count = std.mem.nativeToLittle(u32, @intCast(map.count()));
+    const total_bytes = std.mem.nativeToLittle(u32, payload_bytes);
+
+    // Map header
+    try buffer.appendSlice(std.mem.asBytes(&count));
+    try buffer.appendSlice(std.mem.asBytes(&total_bytes));
 
     var write_iter = map.iterator();
     while (write_iter.next()) |kv| {
-        const values = kv.value_ptr.*;
-        const entry_header = SinglesEntryHeader{
-            .key = std.mem.nativeToLittle(u32, kv.key_ptr.*),
-            .len = @intCast(values.len), // u8 has no endianness
-        };
+        const key = std.mem.nativeToLittle(u32, kv.key_ptr.*);
+        const len: u8 = @intCast(kv.value_ptr.len); // u8 has no endianness
 
-        try buffer.appendSlice(std.mem.asBytes(&entry_header));
-        for (values) |v| {
+        // Entry header
+        try buffer.appendSlice(std.mem.asBytes(&key));
+        try buffer.appendSlice(std.mem.asBytes(&len));
+
+        // Entry values
+        for (kv.value_ptr.*) |v| {
             try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u32, v)));
         }
     }

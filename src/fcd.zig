@@ -3,11 +3,6 @@ const std = @import("std");
 const ccc = @import("ccc");
 const decomp = @import("decomp");
 
-const FcdEntry = packed struct {
-    key: u32,
-    value: u16,
-};
-
 pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMap(u32, u16) {
     //
     // Load decomposition map
@@ -96,16 +91,15 @@ pub fn saveFcdBin(
     defer buffer.deinit();
 
     const count = std.mem.nativeToLittle(u32, @intCast(map.count()));
-    try buffer.appendSlice(std.mem.asBytes(&count));
+    try buffer.appendSlice(std.mem.asBytes(&count)); // Map header
 
     var it = map.iterator();
     while (it.next()) |kv| {
-        const e = FcdEntry{
-            .key = std.mem.nativeToLittle(u32, kv.key_ptr.*),
-            .value = std.mem.nativeToLittle(u16, kv.value_ptr.*),
-        };
+        const key = std.mem.nativeToLittle(u32, kv.key_ptr.*);
+        const value = std.mem.nativeToLittle(u16, kv.value_ptr.*);
 
-        try buffer.appendSlice(std.mem.asBytes(&e));
+        try buffer.appendSlice(std.mem.asBytes(&key));
+        try buffer.appendSlice(std.mem.asBytes(&value));
     }
 
     var file = try std.fs.cwd().createFile(path, .{ .truncate = true });

@@ -1,10 +1,5 @@
 const std = @import("std");
 
-const CccEntry = packed struct {
-    key: u32,
-    value: u8,
-};
-
 pub fn mapCCC(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMap(u32, u8) {
     var map = std.AutoHashMap(u32, u8).init(alloc);
 
@@ -41,22 +36,25 @@ pub fn loadCCC(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32,
     var br = std.io.bufferedReader(file.reader());
 
     const count = try br.reader().readInt(u32, .little);
-    const bytes_needed: usize = @as(usize, count) * @sizeOf(CccEntry);
+    const entry_size = @sizeOf(u32) + @sizeOf(u8);
+
+    const bytes_needed = @as(usize, count) * entry_size;
     if (bytes_needed > 10 * 1024) return error.FileTooLarge;
 
     const payload = try alloc.alloc(u8, bytes_needed);
     defer alloc.free(payload);
 
     try br.reader().readNoEof(payload);
-    const entries = std.mem.bytesAsSlice(CccEntry, payload);
-    std.debug.assert(entries.len == count);
 
     var map = std.AutoHashMap(u32, u8).init(alloc);
     try map.ensureTotalCapacity(count);
 
-    for (entries) |e| {
-        const key = std.mem.littleToNative(u32, e.key);
-        const value = e.value; // u8 has no endianness
+    var offset: usize = 0;
+    while (offset < bytes_needed) : (offset += entry_size) {
+        const key_bytes = payload[offset..][0..@sizeOf(u32)];
+        const key = std.mem.readInt(u32, key_bytes, .little);
+        const value = payload[offset + @sizeOf(u32)];
+
         map.putAssumeCapacityNoClobber(key, value);
     }
 
@@ -72,16 +70,13 @@ pub fn saveCccBin(
     defer buffer.deinit();
 
     const count = std.mem.nativeToLittle(u32, @intCast(map.count()));
-    try buffer.appendSlice(std.mem.asBytes(&count));
+    try buffer.appendSlice(std.mem.asBytes(&count)); // Map header
 
     var it = map.iterator();
     while (it.next()) |kv| {
-        const e = CccEntry{
-            .key = std.mem.nativeToLittle(u32, kv.key_ptr.*),
-            .value = kv.value_ptr.*, // u8 has no endianness
-        };
-
-        try buffer.appendSlice(std.mem.asBytes(&e));
+        const key = std.mem.nativeToLittle(u32, kv.key_ptr.*);
+        try buffer.appendSlice(std.mem.asBytes(&key));
+        try buffer.append(kv.value_ptr.*);
     }
 
     var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
