@@ -185,6 +185,12 @@ pub fn main() !void {
     end = std.time.milliTimestamp();
     std.debug.print("Variable weights: {} ms\n", .{end - start});
 
-    var variable_loaded = try variable.loadVariableBin(alloc, "bin/variable.bin");
-    defer variable_loaded.deinit();
+    var variable_from_bin = try variable.loadVariableBin(alloc, "bin/variable.bin");
+    defer variable_from_bin.deinit();
+
+    var variable_from_json = try variable.loadVariableJson(alloc, "json/variable.json");
+    defer variable_from_json.deinit();
+
+    std.debug.assert(variable_from_bin.count() == variable_from_json.count());
+    std.debug.assert(variable_from_bin.count() == variable_set.count());
 }

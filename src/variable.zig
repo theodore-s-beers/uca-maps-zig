@@ -89,6 +89,39 @@ pub fn loadVariableBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHash
     return map;
 }
 
+pub fn loadVariableJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, void) {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    const file_size = try file.getEndPos();
+    const contents = try alloc.alloc(u8, file_size);
+    defer alloc.free(contents);
+
+    var br = std.io.bufferedReader(file.reader());
+    try br.reader().readNoEof(contents);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, contents, .{});
+    defer parsed.deinit();
+
+    const array = parsed.value.array;
+
+    var map = std.AutoHashMap(u32, void).init(alloc);
+    errdefer map.deinit();
+
+    try map.ensureTotalCapacity(@intCast(array.items.len));
+
+    for (array.items) |item| {
+        const code_point = switch (item) {
+            .integer => |i| @as(u32, @intCast(i)),
+            else => return error.InvalidData,
+        };
+
+        try map.put(code_point, {});
+    }
+
+    return map;
+}
+
 pub fn saveVariableBin(
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, void),
