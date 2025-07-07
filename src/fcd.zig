@@ -23,6 +23,7 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
     //
 
     var fcd_map = std.AutoHashMap(u32, u16).init(alloc);
+    errdefer fcd_map.deinit();
 
     //
     // Iterate over lines and find combining classes
@@ -39,9 +40,7 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
         fields.clearRetainingCapacity();
 
         var field_iter = std.mem.splitScalar(u8, line, ';');
-        while (field_iter.next()) |field| {
-            try fields.append(field);
-        }
+        while (field_iter.next()) |field| try fields.append(field);
 
         const code_point = try std.fmt.parseInt(u32, fields.items[0], 16);
 
@@ -82,21 +81,20 @@ pub fn loadFcdBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u
     const data = try std.fs.cwd().readFileAlloc(alloc, path, 8 * 1024);
     defer alloc.free(data);
 
-    const count = std.mem.readInt(u32, data[0..@sizeOf(u32)], .little);
-    const payload = data[@sizeOf(u32)..];
-
     const entry_size = @sizeOf(u32) + @sizeOf(u16);
-    const bytes_needed = count * entry_size;
+    const count: u32 = @intCast(data.len / entry_size);
 
     var map = std.AutoHashMap(u32, u16).init(alloc);
+    errdefer map.deinit();
+
     try map.ensureTotalCapacity(count);
 
     var offset: usize = 0;
-    while (offset < bytes_needed) : (offset += entry_size) {
-        const key_bytes = payload[offset..][0..@sizeOf(u32)];
+    while (offset < data.len) : (offset += entry_size) {
+        const key_bytes = data[offset..][0..@sizeOf(u32)];
         const key = std.mem.readInt(u32, key_bytes, .little);
 
-        const value_bytes = payload[offset + @sizeOf(u32) ..][0..@sizeOf(u16)];
+        const value_bytes = data[offset + @sizeOf(u32) ..][0..@sizeOf(u16)];
         const value = std.mem.readInt(u16, value_bytes, .little);
 
         map.putAssumeCapacityNoClobber(key, value);
@@ -140,9 +138,6 @@ pub fn saveFcdBin(
 ) !void {
     var buffer = std.ArrayList(u8).init(alloc);
     defer buffer.deinit();
-
-    const count = std.mem.nativeToLittle(u32, @intCast(map.count()));
-    try buffer.appendSlice(std.mem.asBytes(&count)); // Map header
 
     var it = map.iterator();
     while (it.next()) |kv| {
