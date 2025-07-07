@@ -60,6 +60,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    decomp_mod.addImport("util", util_mod);
+
     fcd_mod.addImport("ccc", ccc_mod);
     fcd_mod.addImport("decomp", decomp_mod);
 

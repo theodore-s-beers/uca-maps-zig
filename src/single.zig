@@ -6,7 +6,7 @@ const util = @import("util");
 // Public functions
 //
 
-pub fn mapSingles(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMap(u32, []const u32) {
+pub fn mapSingles(alloc: std.mem.Allocator, data: *const []const u8) !util.SinglesMap {
     var map = std.AutoHashMap(u32, []const u32).init(alloc);
     errdefer {
         var it = map.iterator();
@@ -79,25 +79,29 @@ pub fn mapSingles(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHa
         try map.put(key, try weights.toOwnedSlice());
     }
 
-    return map;
+    return util.SinglesMap{
+        .map = map,
+        .backing = null,
+        .alloc = alloc,
+    };
 }
 
-pub fn loadSingles(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, []u32) {
+pub fn loadSinglesBin(alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
     var br = std.io.bufferedReader(file.reader());
 
-    const count = try br.reader().readInt(u32);
-    const total_bytes = try br.reader().readInt(u32);
-    if (total_bytes > 1024 * 1024) return error.FileTooLarge;
+    const count = try br.reader().readInt(u32, .little);
+    const total_bytes = try br.reader().readInt(u32, .little);
+    if (total_bytes > 512 * 1024) return error.FileTooLarge;
 
     const payload = try alloc.alloc(u8, total_bytes);
     defer alloc.free(payload);
 
     try br.reader().readNoEof(payload);
 
-    var map = std.AutoHashMap(u32, []u32).init(alloc);
+    var map = std.AutoHashMap(u32, []const u32).init(alloc);
     try map.ensureTotalCapacity(count);
 
     var offset: usize = 0;
@@ -111,20 +115,65 @@ pub fn loadSingles(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(
         const len = payload[offset];
         offset += @sizeOf(u8);
 
-        const value_bytes = len * @sizeOf(u32);
-
         const vals = try alloc.alloc(u32, len);
         errdefer alloc.free(vals);
 
-        const payload_vals = std.mem.bytesAsSlice(u32, payload[offset..][0..value_bytes]);
-        for (payload_vals, vals) |src, *dst| {
-            dst.* = std.mem.littleToNative(u32, src);
+        for (0..len) |i| {
+            vals[i] = std.mem.readInt(u32, payload[offset..][0..@sizeOf(u32)], .little);
+            offset += @sizeOf(u32);
         }
 
         map.putAssumeCapacityNoClobber(key, vals);
     }
 
-    return map;
+    return util.SinglesMap{
+        .map = map,
+        .backing = null,
+        .alloc = alloc,
+    };
+}
+
+pub fn loadSinglesJson(alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    const file_size = try file.getEndPos();
+    const contents = try alloc.alloc(u8, file_size);
+    defer alloc.free(contents);
+
+    var br = std.io.bufferedReader(file.reader());
+    try br.reader().readNoEof(contents);
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, contents, .{});
+    defer parsed.deinit();
+
+    const object = parsed.value.object;
+
+    var map = std.AutoHashMap(u32, []const u32).init(alloc);
+    errdefer map.deinit();
+
+    var it = object.iterator();
+    while (it.next()) |entry| {
+        const key = try std.fmt.parseInt(u32, entry.key_ptr.*, 10);
+
+        const array = entry.value_ptr.*.array;
+        const vals = try alloc.alloc(u32, array.items.len);
+
+        for (array.items, vals) |item, *dst| {
+            dst.* = switch (item) {
+                .integer => |i| @as(u32, @intCast(i)),
+                else => return error.InvalidData,
+            };
+        }
+
+        try map.put(key, vals);
+    }
+
+    return util.SinglesMap{
+        .map = map,
+        .backing = null,
+        .alloc = alloc,
+    };
 }
 
 pub fn saveSinglesBin(

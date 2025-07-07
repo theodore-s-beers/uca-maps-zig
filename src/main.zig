@@ -148,20 +148,16 @@ pub fn main() !void {
     std.debug.assert(std.mem.eql(u32, &low_cldr, &low_from_json_cldr));
 
     //
-    // Single-code-point weights
+    // Generate single-code-point maps
     //
 
     start = std.time.milliTimestamp();
 
     var singles_ducet = try single.mapSingles(alloc, &keys_ducet);
-    defer {
-        var it = singles_ducet.iterator();
-        while (it.next()) |kv| alloc.free(kv.value_ptr.*);
-        singles_ducet.deinit();
-    }
+    defer singles_ducet.deinit();
 
-    try single.saveSinglesBin(alloc, &singles_ducet, "bin/singles.bin");
-    try single.saveSinglesJson(alloc, &singles_ducet, "json/singles.json");
+    try single.saveSinglesBin(alloc, &singles_ducet.map, "bin/singles.bin");
+    try single.saveSinglesJson(alloc, &singles_ducet.map, "json/singles.json");
 
     end = std.time.milliTimestamp();
     std.debug.print("Single-code-point (DUCET): {} ms\n", .{end - start});
@@ -169,17 +165,35 @@ pub fn main() !void {
     start = std.time.milliTimestamp();
 
     var singles_cldr = try single.mapSingles(alloc, &keys_cldr);
-    defer {
-        var it = singles_cldr.iterator();
-        while (it.next()) |kv| alloc.free(kv.value_ptr.*);
-        singles_cldr.deinit();
-    }
+    defer singles_cldr.deinit();
 
-    try single.saveSinglesBin(alloc, &singles_cldr, "bin/singles_cldr.bin");
-    try single.saveSinglesJson(alloc, &singles_cldr, "json/singles_cldr.json");
+    try single.saveSinglesBin(alloc, &singles_cldr.map, "bin/singles_cldr.bin");
+    try single.saveSinglesJson(alloc, &singles_cldr.map, "json/singles_cldr.json");
 
     end = std.time.milliTimestamp();
     std.debug.print("Single-code-point (CLDR): {} ms\n", .{end - start});
+
+    //
+    // Test loading single-code-point maps
+    //
+
+    var singles_from_bin = try single.loadSinglesBin(alloc, "bin/singles.bin");
+    defer singles_from_bin.deinit();
+
+    var singles_from_json = try single.loadSinglesJson(alloc, "json/singles.json");
+    defer singles_from_json.deinit();
+
+    std.debug.assert(singles_from_bin.map.count() == singles_from_json.map.count());
+    std.debug.assert(singles_from_bin.map.count() == singles_ducet.map.count());
+
+    var singles_from_bin_cldr = try single.loadSinglesBin(alloc, "bin/singles_cldr.bin");
+    defer singles_from_bin_cldr.deinit();
+
+    var singles_from_json_cldr = try single.loadSinglesJson(alloc, "json/singles_cldr.json");
+    defer singles_from_json_cldr.deinit();
+
+    std.debug.assert(singles_from_bin_cldr.map.count() == singles_from_json_cldr.map.count());
+    std.debug.assert(singles_from_bin_cldr.map.count() == singles_cldr.map.count());
 
     //
     // Multi-code-point weights

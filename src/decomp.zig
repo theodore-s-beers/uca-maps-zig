@@ -1,31 +1,12 @@
 const std = @import("std");
 
-//
-// Types
-//
-
-const DecompMap = struct {
-    map: std.AutoHashMap(u32, []const u32),
-    backing: ?[]const u32,
-    alloc: std.mem.Allocator,
-
-    pub fn deinit(self: *DecompMap) void {
-        if (self.backing) |backing| {
-            self.alloc.free(backing);
-        } else {
-            var it = self.map.iterator();
-            while (it.next()) |entry| self.alloc.free(entry.value_ptr.*);
-        }
-
-        self.map.deinit();
-    }
-};
+const util = @import("util");
 
 //
 // Public functions
 //
 
-pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !DecompMap {
+pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !util.SinglesMap {
     var listed = std.AutoHashMap(u32, []const u32).init(alloc);
     defer {
         var it = listed.iterator();
@@ -125,14 +106,14 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: *const []const u8) !DecompMap 
         try canonical.put(code_point, final_decomp);
     }
 
-    return DecompMap{
+    return util.SinglesMap{
         .map = canonical,
         .backing = null,
         .alloc = alloc,
     };
 }
 
-pub fn loadDecompBin(alloc: std.mem.Allocator, path: []const u8) !DecompMap {
+pub fn loadDecompBin(alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
     var file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
@@ -179,14 +160,14 @@ pub fn loadDecompBin(alloc: std.mem.Allocator, path: []const u8) !DecompMap {
         offset += val_bytes;
     }
 
-    return DecompMap{
+    return util.SinglesMap{
         .map = map,
         .backing = vals,
         .alloc = alloc,
     };
 }
 
-pub fn loadDecompJson(alloc: std.mem.Allocator, path: []const u8) !DecompMap {
+pub fn loadDecompJson(alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
     const file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
 
@@ -222,7 +203,7 @@ pub fn loadDecompJson(alloc: std.mem.Allocator, path: []const u8) !DecompMap {
         try map.put(key, vals);
     }
 
-    return DecompMap{
+    return util.SinglesMap{
         .map = map,
         .backing = null,
         .alloc = alloc,
