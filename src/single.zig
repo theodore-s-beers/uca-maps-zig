@@ -24,12 +24,12 @@ pub fn mapSingles(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHa
     while (line_it.next()) |line| {
         if (line.len == 0 or !util.HEX.isSet(line[0])) continue;
 
-        points.clearRetainingCapacity();
-
         var split_semi = std.mem.splitScalar(u8, line, ';');
 
         var points_str = split_semi.next() orelse return error.InvalidData;
         points_str = std.mem.trim(u8, points_str, " ");
+
+        points.clearRetainingCapacity();
 
         var split_space = std.mem.splitScalar(u8, points_str, ' ');
         while (split_space.next()) |cp_str| {
@@ -51,8 +51,8 @@ pub fn mapSingles(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHa
         weights.clearRetainingCapacity();
 
         var split_bracket = std.mem.splitScalar(u8, weights_str, '[');
-        while (split_bracket.next()) |x| {
-            var weight_str = std.mem.trim(u8, x, " ]");
+        while (split_bracket.next()) |segment| {
+            var weight_str = std.mem.trim(u8, segment, " ]");
             if (weight_str.len == 0) continue;
 
             std.debug.assert(weight_str.len == 15); // One set of weights
