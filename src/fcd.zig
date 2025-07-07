@@ -2,6 +2,7 @@ const std = @import("std");
 
 const ccc = @import("ccc");
 const decomp = @import("decomp");
+const util = @import("util");
 
 pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMap(u32, u16) {
     //
@@ -44,23 +45,8 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: *const []const u8) !std.AutoHashMa
 
         const code_point = try std.fmt.parseInt(u32, fields.items[0], 16);
 
-        if ((0x3400 <= code_point and code_point <= 0x4DBF) // CJK ext A
-        or (0x4E00 <= code_point and code_point <= 0x9FFF) // CJK
-        or (0xAC00 <= code_point and code_point <= 0xD7A3) // Hangul
-        or (0xD800 <= code_point and code_point <= 0xDFFF) // Surrogates
-        or (0xE000 <= code_point and code_point <= 0xF8FF) // Private use
-        or (0x17000 <= code_point and code_point <= 0x187F7) // Tangut
-        or (0x18D00 <= code_point and code_point <= 0x18D08) // Tangut suppl
-        or (0x20000 <= code_point and code_point <= 0x2A6DF) // CJK ext B
-        or (0x2A700 <= code_point and code_point <= 0x2B738) // CJK ext C
-        or (0x2B740 <= code_point and code_point <= 0x2B81D) // CJK ext D
-        or (0x2B820 <= code_point and code_point <= 0x2CEA1) // CJK ext E
-        or (0x2CEB0 <= code_point and code_point <= 0x2EBE0) // CJK ext F
-        or (0x30000 <= code_point and code_point <= 0x3134A) // CJK ext G
-        or (0xF0000 <= code_point and code_point <= 0xFFFFD) // Plane 15 private use
-        or (0x10_0000 <= code_point and code_point <= 0x10_FFFD) // Plane 16 private use
-        ) {
-            continue;
+        for (util.IGNORED_RANGES) |range| {
+            if (range.contains(code_point)) continue;
         }
 
         const decomps: []const u32 = decomp_data.map.get(code_point) orelse continue;

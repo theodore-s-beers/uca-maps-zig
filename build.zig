@@ -64,6 +64,7 @@ pub fn build(b: *std.Build) void {
 
     fcd_mod.addImport("ccc", ccc_mod);
     fcd_mod.addImport("decomp", decomp_mod);
+    fcd_mod.addImport("util", util_mod);
 
     low_mod.addImport("util", util_mod);
 

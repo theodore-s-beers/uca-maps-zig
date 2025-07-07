@@ -38,6 +38,15 @@ pub const SinglesMap = struct {
     }
 };
 
+const Range = struct {
+    start: u32,
+    end: u32,
+
+    pub fn contains(self: Range, value: u32) bool {
+        return value >= self.start and value <= self.end;
+    }
+};
+
 //
 // Constants
 //
@@ -47,6 +56,24 @@ pub const HEX: std.bit_set.ArrayBitSet(usize, 256) = blk: {
     for ('0'..':') |c| set.set(c);
     for ('A'..'G') |c| set.set(c);
     break :blk set;
+};
+
+pub const IGNORED_RANGES = [_]Range{
+    Range{ .start = 0x3400, .end = 0x4DBF }, // CJK ext A
+    Range{ .start = 0x4E00, .end = 0x9FFF }, // CJK
+    Range{ .start = 0xAC00, .end = 0xD7A3 }, // Hangul
+    Range{ .start = 0xD800, .end = 0xDFFF }, // Surrogates
+    Range{ .start = 0xE000, .end = 0xF8FF }, // Private use
+    Range{ .start = 0x17000, .end = 0x187F7 }, // Tangut
+    Range{ .start = 0x18D00, .end = 0x18D08 }, // Tangut suppl
+    Range{ .start = 0x20000, .end = 0x2A6DF }, // CJK ext B
+    Range{ .start = 0x2A700, .end = 0x2B738 }, // CJK ext C
+    Range{ .start = 0x2B740, .end = 0x2B81D }, // CJK ext D
+    Range{ .start = 0x2B820, .end = 0x2CEA1 }, // CJK ext E
+    Range{ .start = 0x2CEB0, .end = 0x2EBE0 }, // CJK ext F
+    Range{ .start = 0x30000, .end = 0x3134A }, // CJK ext G
+    Range{ .start = 0xF0000, .end = 0xFFFFD }, // Plane 15 private use
+    Range{ .start = 0x10_0000, .end = 0x10_FFFD }, // Plane 16 private use
 };
 
 //
