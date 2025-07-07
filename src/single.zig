@@ -157,6 +157,7 @@ pub fn loadSinglesJson(alloc: std.mem.Allocator, path: []const u8) !util.Singles
 
         const array = entry.value_ptr.*.array;
         const vals = try alloc.alloc(u32, array.items.len);
+        errdefer alloc.free(vals);
 
         for (array.items, vals) |item, *dst| {
             dst.* = switch (item) {
