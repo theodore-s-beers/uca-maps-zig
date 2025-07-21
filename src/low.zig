@@ -87,15 +87,16 @@ pub fn loadLowJson(alloc: std.mem.Allocator, path: []const u8) ![183]u32 {
 }
 
 pub fn saveLowJson(arr: *const [183]u32, path: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    var bw = std.io.bufferedWriter(file.writer());
-    var ws = std.json.writeStream(bw.writer(), .{});
+    var buf: [1536]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    var ws = std.json.writeStream(fbs.writer(), .{});
 
     try ws.beginArray();
     for (arr) |value| try ws.write(value);
     try ws.endArray();
 
-    try bw.flush();
+    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
+    defer file.close();
+
+    try file.writeAll(fbs.getWritten());
 }
