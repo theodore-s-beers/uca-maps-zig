@@ -35,7 +35,7 @@ pub fn mapFCD(io: std.Io, alloc: std.mem.Allocator, data: []const u8) !std.AutoH
 
     var line_iter = std.mem.splitScalar(u8, data, '\n');
 
-    while (line_iter.next()) |line| {
+    lines: while (line_iter.next()) |line| {
         if (line.len == 0) continue;
 
         fields.clearRetainingCapacity();
@@ -46,7 +46,7 @@ pub fn mapFCD(io: std.Io, alloc: std.mem.Allocator, data: []const u8) !std.AutoH
         const code_point = try std.fmt.parseInt(u32, fields.items[0], 16);
 
         for (util.IGNORED_RANGES) |range| {
-            if (range.contains(code_point)) continue;
+            if (range.contains(code_point)) continue :lines;
         }
 
         const decomps: []const u32 = decomp_data.map.get(code_point) orelse continue;

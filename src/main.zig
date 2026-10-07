@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const unicode = @import("unicode.zig");
 const compact = @import("compact");
 const ccc = @import("ccc");
 const decomp = @import("decomp");
@@ -156,6 +157,8 @@ pub fn main(init: std.process.Init) !void {
     end = std.Io.Timestamp.now(io, .awake).toMilliseconds();
     std.debug.print("Generate low code point map (CLDR): {} ms\n", .{end - start});
     std.debug.print("\n", .{});
+
+    try unicode.write(io, alloc, uni_data, keys_ducet, &low_ducet, &low_cldr);
 
     //
     // Test loading low code point maps

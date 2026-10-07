@@ -23,10 +23,11 @@ the source maps before writing `bin/collation.bin` (DUCET) and
 `bin/collation_cldr.bin` (CLDR). Output ordering is deterministic. The older
 single-character and contraction outputs remain available as intermediate data.
 
-Transfer the indexed tables and their shared reader to the sibling `later` repo:
+Transfer the runtime tables and their shared reader to the sibling `later` repo:
 
 ```sh
-cp bin/collation.bin bin/collation_cldr.bin ../later/src/bin/
+cp bin/{collation,collation_cldr,decomp,fcd,variable}.bin ../later/src/bin/
+cp generated/{ccc,consts,implicit}.zig ../later/src/
 cp src/collation_table.zig ../later/src/collation_table.zig
 cd ../later
 zig fmt --check .
@@ -35,9 +36,13 @@ zig build test --release=safe
 ```
 
 Keep both copies of `src/collation_table.zig` identical when changing the format
-or lookup implementation. `later` also consumes `decomp.bin`, `fcd.bin`, and
-`variable.bin`, and has separately maintained low-code-point and combining-class
-arrays. Updating the Unicode inputs requires updating those products too.
+or lookup implementation. Full regeneration also emits `generated/ccc.zig`,
+`generated/consts.zig`, and `generated/implicit.zig`. These provide combining
+classes, low-code-point weights, and implicit-weight rules derived from assigned
+Unicode ranges, the `Unified_Ideograph` property, and the DUCET
+`@implicitweights` directives. When updating the inputs, also install matching
+collation conformance fixtures in `later/src/test-data/`. The `compact` command
+only rebuilds the indexed binaries.
 
 ## Indexed collation format (LCT1)
 
@@ -52,14 +57,14 @@ All integers are little-endian; records have no padding. The header contains
 | Contraction edges    | `u32 codepoint`, `u32 next_first_edge`, `u32 weight_start`, `u16 next_edge_len`, `u16 weight_len` |
 | Weights              | `u32` collation weights, with identical rows shared                                               |
 
-An entry contains a two-bit tag (zero: missing, one: single, two: contraction),
-a 16-bit weight count at bit 2, a 32-bit weight offset at bit 18, and a 14-bit
-metadata index at bit 50. Contraction entries also contain their single-character
-fallback row. Sibling edges are sorted by code point. An edge with no weights may
-still lead to a three-character contraction.
+An entry contains a 2-bit tag (0: missing, 1: single, 2: contraction), a 16-bit
+weight count at bit 2, a 32-bit weight offset at bit 18, and a 14-bit metadata
+index at bit 50. Contraction entries also contain their single-character
+fallback row. Sibling edges are sorted by code point. An edge with no weights
+may still lead to a three-character contraction.
 
 The reader loads trusted generator output into five typed arrays. Lookups use
-page indexing, followed by a short linear search or binary search for contraction
-edges. This replaces runtime collation hash maps and separate contraction-starter
-lists. The indexed files are larger than the old serialized maps; the layout is
-intended to reduce runtime lookup and allocation overhead.
+page indexing, followed by a short linear search or binary search for
+contraction edges. This replaces runtime collation hash maps and separate
+contraction-starter lists. The indexed files are larger than the old serialized
+maps; the layout is intended to reduce runtime lookup and allocation overhead.
