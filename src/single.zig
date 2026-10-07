@@ -195,17 +195,6 @@ pub fn saveSinglesBin(
     var buffer: std.ArrayList(u8) = .empty;
     defer buffer.deinit(alloc);
 
-    var payload_bytes: u32 = 0;
-    var payload_iter = map.iterator();
-    while (payload_iter.next()) |kv| {
-        // Entry header
-        payload_bytes += @sizeOf(u32); // Key
-        payload_bytes += @sizeOf(u8); // Length
-
-        // Entry values
-        payload_bytes += @intCast(kv.value_ptr.len * @sizeOf(u32));
-    }
-
     // Map header
     const count = std.mem.nativeToLittle(u32, @intCast(map.count()));
     try buffer.appendSlice(alloc, std.mem.asBytes(&count));

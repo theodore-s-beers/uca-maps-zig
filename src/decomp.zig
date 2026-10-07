@@ -29,7 +29,7 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
 
     var line_it = std.mem.splitScalar(u8, data, '\n');
 
-    lines: while (line_it.next()) |line| {
+    while (line_it.next()) |line| {
         if (line.len == 0) continue;
 
         fields.clearRetainingCapacity();
@@ -38,10 +38,6 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
         while (field_iter.next()) |field| try fields.append(alloc, field);
 
         const code_point = try std.fmt.parseInt(u32, fields.items[0], 16);
-
-        for (util.IGNORED_RANGES) |range| {
-            if (range.contains(code_point)) continue :lines;
-        }
 
         const decomp_column = fields.items[5];
         if (decomp_column.len == 0) continue; // No decomposition
@@ -210,18 +206,6 @@ pub fn saveDecompBin(
     var buffer: std.ArrayList(u8) = .empty;
     defer buffer.deinit(alloc);
 
-    var payload_bytes: u32 = 0;
-
-    var payload_iter = map.iterator();
-    while (payload_iter.next()) |kv| {
-        // Entry header
-        payload_bytes += @sizeOf(u32); // Key
-        payload_bytes += @sizeOf(u8); // Length
-
-        // Entry values
-        payload_bytes += @intCast(kv.value_ptr.len * @sizeOf(u32));
-    }
-
     // Map header
     const count = std.mem.nativeToLittle(u32, @intCast(map.count()));
     try buffer.appendSlice(alloc, std.mem.asBytes(&count));
@@ -323,10 +307,17 @@ test "decomposition mapping cleans up every allocation failure" {
     try std.testing.checkAllAllocationFailures(no_resize.allocator(), checkDecompAllocations, .{});
 }
 
-test "ignored ranges skip whole Unicode records" {
-    var result = try mapDecomps(std.testing.allocator, "E000;IGNORED;Co;0;L;0041\n00C0;KEPT;Lu;0;L;0041 0300\n");
+test "decompositions follow Unicode mappings rather than block ranges" {
+    var result = try mapDecomps(std.testing.allocator,
+        \\3400;CJK;Lo;0;L;
+        \\AC00;HANGUL;Lo;0;L;
+        \\E000;PRIVATE USE;Co;0;L;
+        \\FB01;LIGATURE FI;Ll;0;L;<compat> 0066 0069
+        \\00C0;A WITH GRAVE;Lu;0;L;0041 0300
+        \\F900;CJK COMPATIBILITY IDEOGRAPH;Lo;0;L;8C48
+    );
     defer result.deinit();
-    try std.testing.expectEqual(1, result.map.count());
-    try std.testing.expect(!result.map.contains(0xE000));
+    try std.testing.expectEqual(2, result.map.count());
     try std.testing.expectEqualSlices(u32, &.{ 0x41, 0x300 }, result.map.get(0xC0).?);
+    try std.testing.expectEqualSlices(u32, &.{0x8C48}, result.map.get(0xF900).?);
 }

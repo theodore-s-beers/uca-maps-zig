@@ -2,7 +2,6 @@ const std = @import("std");
 
 const ccc = @import("ccc");
 const decomp = @import("decomp");
-const util = @import("util");
 
 pub fn mapFCD(io: std.Io, alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, u16) {
     //
@@ -35,7 +34,7 @@ pub fn mapFCD(io: std.Io, alloc: std.mem.Allocator, data: []const u8) !std.AutoH
 
     var line_iter = std.mem.splitScalar(u8, data, '\n');
 
-    lines: while (line_iter.next()) |line| {
+    while (line_iter.next()) |line| {
         if (line.len == 0) continue;
 
         fields.clearRetainingCapacity();
@@ -44,10 +43,6 @@ pub fn mapFCD(io: std.Io, alloc: std.mem.Allocator, data: []const u8) !std.AutoH
         while (field_iter.next()) |field| try fields.append(alloc, field);
 
         const code_point = try std.fmt.parseInt(u32, fields.items[0], 16);
-
-        for (util.IGNORED_RANGES) |range| {
-            if (range.contains(code_point)) continue :lines;
-        }
 
         const decomps: []const u32 = decomp_data.map.get(code_point) orelse continue;
 
