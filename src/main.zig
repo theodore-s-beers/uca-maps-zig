@@ -27,7 +27,7 @@ pub fn main(init: std.process.Init) !void {
     const keys_ducet = try cwd.readFileAlloc(io, "data/allkeys.txt", alloc, .limited(3 * 1024 * 1024));
     defer alloc.free(keys_ducet);
 
-    const keys_cldr = try cwd.readFileAlloc(io, "data/allkeys_cldr.txt", alloc, .limited(3 * 1024 * 1024));
+    const keys_cldr = try cwd.readFileAlloc(io, "data/allkeys_CLDR.txt", alloc, .limited(3 * 1024 * 1024));
     defer alloc.free(keys_cldr);
 
     var end = std.Io.Timestamp.now(io, .awake).toMilliseconds();

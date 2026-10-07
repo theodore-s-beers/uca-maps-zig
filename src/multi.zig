@@ -76,7 +76,9 @@ pub fn mapMulti(alloc: std.mem.Allocator, data: []const u8) !util.MultiMap {
         }
 
         std.debug.assert(1 <= weights.items.len and weights.items.len <= 3);
-        try map.put(key, try weights.toOwnedSlice(alloc));
+        const row = try weights.toOwnedSlice(alloc);
+        errdefer alloc.free(row);
+        try map.put(key, row);
     }
 
     return util.MultiMap{
@@ -270,4 +272,14 @@ fn packCodePoints(code_points: []const u32) u64 {
         },
         else => unreachable,
     }
+}
+
+fn checkMapAllocations(alloc: std.mem.Allocator) !void {
+    var result = try mapMulti(alloc, "0041 0300 ; [.1234.0020.0002]\n0042 0300 ; [.1234.0020.0002]\n0043 0300 ; [.1234.0020.0002]\n0044 0300 ; [.1234.0020.0002]\n0045 0300 ; [.1234.0020.0002]\n0046 0300 ; [.1234.0020.0002]\n0047 0300 ; [.1234.0020.0002]\n0048 0300 ; [.1234.0020.0002]\n");
+    defer result.deinit();
+    try std.testing.expectEqual(8, result.map.count());
+}
+
+test "mapping cleans up every allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, checkMapAllocations, .{});
 }

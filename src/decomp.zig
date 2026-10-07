@@ -29,7 +29,7 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
 
     var line_it = std.mem.splitScalar(u8, data, '\n');
 
-    while (line_it.next()) |line| {
+    lines: while (line_it.next()) |line| {
         if (line.len == 0) continue;
 
         fields.clearRetainingCapacity();
@@ -40,7 +40,7 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
         const code_point = try std.fmt.parseInt(u32, fields.items[0], 16);
 
         for (util.IGNORED_RANGES) |range| {
-            if (range.contains(code_point)) continue;
+            if (range.contains(code_point)) continue :lines;
         }
 
         const decomp_column = fields.items[5];
@@ -62,7 +62,9 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
 
         std.debug.assert(listed_decomps.items.len > 0);
 
-        try listed.put(code_point, try listed_decomps.toOwnedSlice(alloc));
+        const row = try listed_decomps.toOwnedSlice(alloc);
+        errdefer alloc.free(row);
+        try listed.put(code_point, row);
     }
 
     var result: std.ArrayList(u32) = .empty;
@@ -93,6 +95,7 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
             }
         };
 
+        errdefer alloc.free(final_decomp);
         try canonical.put(code_point, final_decomp);
     }
 
@@ -295,6 +298,7 @@ fn getCanonicalDecomp(
 
     // Otherwise, we need to recurse for the canonical decomposition
     var result: std.ArrayList(u32) = .empty;
+    errdefer result.deinit(alloc);
 
     for (decomp) |d| {
         const c = try getCanonicalDecomp(alloc, listed, d);
@@ -304,4 +308,25 @@ fn getCanonicalDecomp(
     }
 
     return result.toOwnedSlice(alloc);
+}
+
+fn checkDecompAllocations(alloc: std.mem.Allocator) !void {
+    var result = try mapDecomps(alloc, "00C0;TEST;Lu;0;L;0041 0300\n00C1;TEST;Lu;0;L;00C0 0301\n00C2;TEST;Lu;0;L;00C1 0302\n00C3;TEST;Lu;0;L;00C2 0303\n00C4;TEST;Lu;0;L;0041\n00C5;TEST;Lu;0;L;0042\n00C6;TEST;Lu;0;L;0043\n00C7;TEST;Lu;0;L;0044\n");
+    defer result.deinit();
+    try std.testing.expectEqual(8, result.map.count());
+    try std.testing.expectEqualSlices(u32, &.{ 0x41, 0x300, 0x301, 0x302, 0x303 }, result.map.get(0xC3).?);
+}
+
+test "decomposition mapping cleans up every allocation failure" {
+    // Force resize/remap to allocate so the failure sequence is deterministic.
+    var no_resize = std.testing.FailingAllocator.init(std.testing.allocator, .{ .resize_fail_index = 0 });
+    try std.testing.checkAllAllocationFailures(no_resize.allocator(), checkDecompAllocations, .{});
+}
+
+test "ignored ranges skip whole Unicode records" {
+    var result = try mapDecomps(std.testing.allocator, "E000;IGNORED;Co;0;L;0041\n00C0;KEPT;Lu;0;L;0041 0300\n");
+    defer result.deinit();
+    try std.testing.expectEqual(1, result.map.count());
+    try std.testing.expect(!result.map.contains(0xE000));
+    try std.testing.expectEqualSlices(u32, &.{ 0x41, 0x300 }, result.map.get(0xC0).?);
 }

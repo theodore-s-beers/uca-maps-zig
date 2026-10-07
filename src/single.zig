@@ -76,7 +76,9 @@ pub fn mapSingles(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
         }
 
         std.debug.assert(1 <= weights.items.len and weights.items.len <= 18);
-        try map.put(key, try weights.toOwnedSlice(alloc));
+        const row = try weights.toOwnedSlice(alloc);
+        errdefer alloc.free(row);
+        try map.put(key, row);
     }
 
     return util.SinglesMap{
@@ -143,13 +145,21 @@ pub fn loadSinglesJson(io: std.Io, alloc: std.mem.Allocator, path: []const u8) !
     const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(1024 * 1024));
     defer alloc.free(data);
 
+    return parseSinglesJson(alloc, data);
+}
+
+fn parseSinglesJson(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
     defer parsed.deinit();
 
     const object = parsed.value.object;
 
     var map = std.AutoHashMap(u32, []const u32).init(alloc);
-    errdefer map.deinit();
+    errdefer {
+        var rows = map.valueIterator();
+        while (rows.next()) |row| alloc.free(row.*);
+        map.deinit();
+    }
 
     var it = object.iterator();
     while (it.next()) |entry| {
@@ -246,4 +256,28 @@ pub fn saveSinglesJson(
     try ws.endObject();
 
     try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = buffer.written() });
+}
+
+fn checkMapAllocations(alloc: std.mem.Allocator) !void {
+    var result = try mapSingles(alloc, "0041 ; [.1234.0020.0002]\n0042 ; [.1234.0020.0002]\n0043 ; [.1234.0020.0002]\n0044 ; [.1234.0020.0002]\n0045 ; [.1234.0020.0002]\n0046 ; [.1234.0020.0002]\n0047 ; [.1234.0020.0002]\n0048 ; [.1234.0020.0002]\n");
+    defer result.deinit();
+    try std.testing.expectEqual(8, result.map.count());
+}
+
+test "mapping cleans up every allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, checkMapAllocations, .{});
+}
+
+fn checkJsonAllocations(alloc: std.mem.Allocator) !void {
+    var result = try parseSinglesJson(alloc, "{\"65\":[65,66],\"66\":[66,67],\"67\":[67,68],\"68\":[68,69],\"69\":[69,70],\"70\":[70,71],\"71\":[71,72],\"72\":[72,73]}");
+    defer result.deinit();
+    try std.testing.expectEqual(8, result.map.count());
+}
+
+test "JSON loading cleans up every allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, checkJsonAllocations, .{});
+}
+
+test "invalid JSON row cleans up previously inserted rows" {
+    try std.testing.expectError(error.InvalidData, parseSinglesJson(std.testing.allocator, "{\"65\":[1],\"66\":[false]}"));
 }
