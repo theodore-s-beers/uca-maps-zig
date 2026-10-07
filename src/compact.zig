@@ -25,7 +25,7 @@ const Builder = struct {
         const slot = try self.rows.getOrPut(std.mem.sliceAsBytes(weights));
         if (!slot.found_existing) {
             slot.value_ptr.* = .{ .start = @intCast(self.weights.items.len), .len = @intCast(weights.len) };
-            try self.weights.appendSlice(weights);
+            try self.weights.appendSlice(self.alloc, weights);
         }
         return slot.value_ptr.*;
     }
@@ -46,7 +46,7 @@ const Builder = struct {
         const start = self.edges.items.len;
         for (keys) |key| {
             const child = node_.children.get(key).?;
-            try self.edges.append(.{
+            try self.edges.append(self.alloc, .{
                 .codepoint = key,
                 .next_first_edge = 0,
                 .weight_start = child.row.start,
@@ -83,19 +83,19 @@ fn packEntry(row: Row, meta: ?u16) !u64 {
     return 1 | (@as(u64, row.len) << 2) | (@as(u64, row.start) << 18);
 }
 
-fn int(buffer: *std.ArrayList(u8), comptime T: type, value: T) !void {
+fn int(alloc: std.mem.Allocator, buffer: *std.ArrayList(u8), comptime T: type, value: T) !void {
     var bytes: [@sizeOf(T)]u8 = undefined;
     std.mem.writeInt(T, &bytes, value, .little);
-    try buffer.appendSlice(&bytes);
+    try buffer.appendSlice(alloc, &bytes);
 }
 
 fn build(alloc: std.mem.Allocator, singles: *const Singles, multis: *const Multis) ![]const u8 {
     var builder = Builder{
         .alloc = alloc,
         .rows = std.StringHashMap(Row).init(alloc),
-        .weights = std.ArrayList(u32).init(alloc),
-        .edges = std.ArrayList(format.Edge).init(alloc),
-        .meta = std.ArrayList(format.Meta).init(alloc),
+        .weights = .empty,
+        .edges = .empty,
+        .meta = .empty,
     };
     var roots = std.AutoHashMap(u32, *Node).init(alloc);
     const multi_keys = try alloc.alloc(u64, multis.count());
@@ -120,8 +120,8 @@ fn build(alloc: std.mem.Allocator, singles: *const Singles, multis: *const Multi
         node.row = try builder.intern(multis.get(key).?);
     }
 
-    var pages = std.ArrayList(u16).init(alloc);
-    var entries = std.ArrayList(u64).init(alloc);
+    var pages: std.ArrayList(u16) = .empty;
+    var entries: std.ArrayList(u64) = .empty;
     var page_ids = std.AutoHashMap([256]u64, u16).init(alloc);
     for (0..0x1100) |page_index| {
         var page: [256]u64 = @splat(0);
@@ -133,37 +133,37 @@ fn build(alloc: std.mem.Allocator, singles: *const Singles, multis: *const Multi
                 const meta_index: u16 = @intCast(builder.meta.items.len);
                 const first_edge: u32 = @intCast(builder.edges.items.len);
                 const edge_len = try builder.writeEdges(root);
-                try builder.meta.append(.{ .first_edge = first_edge, .edge_len = edge_len, .max_len = root.max_len });
+                try builder.meta.append(alloc, .{ .first_edge = first_edge, .edge_len = edge_len, .max_len = root.max_len });
                 entry.* = try packEntry(row, meta_index);
             } else if (weights) |values| entry.* = try packEntry(try builder.intern(values), null);
         }
         const slot = try page_ids.getOrPut(page);
         if (!slot.found_existing) {
             slot.value_ptr.* = @intCast(entries.items.len / 256);
-            try entries.appendSlice(&page);
+            try entries.appendSlice(alloc, &page);
         }
-        try pages.append(slot.value_ptr.*);
+        try pages.append(alloc, slot.value_ptr.*);
     }
 
-    var bytes = std.ArrayList(u8).init(alloc);
-    try bytes.appendSlice("LCT1");
+    var bytes: std.ArrayList(u8) = .empty;
+    try bytes.appendSlice(alloc, "LCT1");
     for ([_]usize{ pages.items.len, entries.items.len, builder.meta.items.len, builder.edges.items.len, builder.weights.items.len }) |count|
-        try int(&bytes, u32, @intCast(count));
-    for (pages.items) |value| try int(&bytes, u16, value);
-    for (entries.items) |value| try int(&bytes, u64, value);
+        try int(alloc, &bytes, u32, @intCast(count));
+    for (pages.items) |value| try int(alloc, &bytes, u16, value);
+    for (entries.items) |value| try int(alloc, &bytes, u64, value);
     for (builder.meta.items) |value| {
-        try int(&bytes, u32, value.first_edge);
-        try int(&bytes, u16, value.edge_len);
-        try int(&bytes, u8, value.max_len);
+        try int(alloc, &bytes, u32, value.first_edge);
+        try int(alloc, &bytes, u16, value.edge_len);
+        try int(alloc, &bytes, u8, value.max_len);
     }
     for (builder.edges.items) |value| {
-        try int(&bytes, u32, value.codepoint);
-        try int(&bytes, u32, value.next_first_edge);
-        try int(&bytes, u32, value.weight_start);
-        try int(&bytes, u16, value.next_edge_len);
-        try int(&bytes, u16, value.weight_len);
+        try int(alloc, &bytes, u32, value.codepoint);
+        try int(alloc, &bytes, u32, value.next_first_edge);
+        try int(alloc, &bytes, u32, value.weight_start);
+        try int(alloc, &bytes, u16, value.next_edge_len);
+        try int(alloc, &bytes, u16, value.weight_len);
     }
-    for (builder.weights.items) |value| try int(&bytes, u32, value);
+    for (builder.weights.items) |value| try int(alloc, &bytes, u32, value);
     return bytes.items;
 }
 
@@ -207,25 +207,24 @@ fn verify(alloc: std.mem.Allocator, bytes: []const u8, singles: *const Singles, 
     }
 }
 
-pub fn write(alloc: std.mem.Allocator, singles: *const Singles, multis: *const Multis, path: []const u8) !void {
+pub fn write(io: std.Io, alloc: std.mem.Allocator, singles: *const Singles, multis: *const Multis, path: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(alloc);
     defer arena.deinit();
     const bytes = try build(arena.allocator(), singles, multis);
     try verify(arena.allocator(), bytes, singles, multis);
-    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = bytes });
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = bytes });
     std.debug.print("{s}: {d} bytes; verified all scalar slots and {d} contractions\n", .{ path, bytes.len, multis.count() });
 }
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}).init;
-    defer std.debug.assert(gpa.deinit() == .ok);
-    const alloc = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    const alloc = init.gpa;
     inline for (.{ "", "_cldr" }) |suffix| {
-        var singles = try single.loadSinglesBin(alloc, "bin/singles" ++ suffix ++ ".bin");
+        var singles = try single.loadSinglesBin(io, alloc, "bin/singles" ++ suffix ++ ".bin");
         defer singles.deinit();
-        var multis = try multi.loadMultiBin(alloc, "bin/multi" ++ suffix ++ ".bin");
+        var multis = try multi.loadMultiBin(io, alloc, "bin/multi" ++ suffix ++ ".bin");
         defer multis.deinit();
-        try write(alloc, &singles.map, &multis.map, "bin/collation" ++ suffix ++ ".bin");
+        try write(io, alloc, &singles.map, &multis.map, "bin/collation" ++ suffix ++ ".bin");
     }
 }
 
@@ -244,8 +243,8 @@ test "compact tables are deterministic and preserve contraction-only prefixes" {
     try verify(alloc, bytes, &singles, &multis);
     var reversed = Multis.init(alloc);
     var it = multis.iterator();
-    var keys = std.ArrayList(u64).init(alloc);
-    while (it.next()) |kv| try keys.append(kv.key_ptr.*);
+    var keys: std.ArrayList(u64) = .empty;
+    while (it.next()) |kv| try keys.append(alloc, kv.key_ptr.*);
     std.mem.sort(u64, keys.items, {}, std.sort.desc(u64));
     for (keys.items) |key| try reversed.put(key, multis.get(key).?);
     try std.testing.expectEqualSlices(u8, bytes, try build(alloc, &singles, &reversed));

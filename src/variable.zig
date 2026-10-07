@@ -6,8 +6,8 @@ pub fn mapVariable(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(
     var map = std.AutoHashMap(u32, void).init(alloc);
     errdefer map.deinit();
 
-    var points = std.ArrayList(u32).init(alloc);
-    defer points.deinit();
+    var points: std.ArrayList(u32) = .empty;
+    defer points.deinit(alloc);
 
     var line_it = std.mem.splitScalar(u8, data, '\n');
     outer: while (line_it.next()) |line| {
@@ -23,7 +23,7 @@ pub fn mapVariable(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(
         var split_space = std.mem.splitScalar(u8, points_str, ' ');
         while (split_space.next()) |cp_str| {
             const cp = try std.fmt.parseInt(u32, cp_str, 16);
-            try points.append(cp);
+            try points.append(alloc, cp);
         }
 
         std.debug.assert(1 <= points.items.len and points.items.len <= 3);
@@ -62,8 +62,8 @@ pub fn mapVariable(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(
     return map;
 }
 
-pub fn loadVariableBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, void) {
-    const data = try std.fs.cwd().readFileAlloc(alloc, path, 64 * 1024);
+pub fn loadVariableBin(io: std.Io, alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, void) {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(64 * 1024));
     defer alloc.free(data);
 
     const count: usize = data.len / @sizeOf(u32);
@@ -85,8 +85,8 @@ pub fn loadVariableBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHash
     return map;
 }
 
-pub fn loadVariableJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, void) {
-    const data = try std.fs.cwd().readFileAlloc(alloc, path, 128 * 1024);
+pub fn loadVariableJson(io: std.Io, alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, void) {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(128 * 1024));
     defer alloc.free(data);
 
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
@@ -112,53 +112,49 @@ pub fn loadVariableJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHas
 }
 
 pub fn saveVariableBin(
+    io: std.Io,
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, void),
     path: []const u8,
 ) !void {
-    var list = std.ArrayList(u32).init(alloc);
-    defer list.deinit();
+    var list: std.ArrayList(u32) = .empty;
+    defer list.deinit(alloc);
 
     var it = map.iterator();
     while (it.next()) |entry| {
-        try list.append(std.mem.nativeToLittle(u32, entry.key_ptr.*));
+        try list.append(alloc, std.mem.nativeToLittle(u32, entry.key_ptr.*));
     }
 
     std.mem.sort(u32, list.items, {}, comptime std.sort.asc(u32));
 
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
-
     const bytes = std.mem.sliceAsBytes(list.items);
-    try file.writeAll(bytes);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = bytes });
 }
 
 pub fn saveVariableJson(
+    io: std.Io,
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, void),
     path: []const u8,
 ) !void {
-    var list = std.ArrayList(u32).init(alloc);
-    defer list.deinit();
+    var list: std.ArrayList(u32) = .empty;
+    defer list.deinit(alloc);
 
     var it = map.iterator();
     while (it.next()) |entry| {
-        try list.append(entry.key_ptr.*);
+        try list.append(alloc, entry.key_ptr.*);
     }
 
     std.mem.sort(u32, list.items, {}, comptime std.sort.asc(u32));
 
-    var buffer = std.ArrayList(u8).init(alloc);
+    var buffer = std.Io.Writer.Allocating.init(alloc);
     defer buffer.deinit();
 
-    var ws = std.json.writeStream(buffer.writer(), .{});
+    var ws: std.json.Stringify = .{ .writer = &buffer.writer };
 
     try ws.beginArray();
     for (list.items) |code_point| try ws.write(code_point);
     try ws.endArray();
 
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    try file.writeAll(buffer.items);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = buffer.written() });
 }

@@ -14,11 +14,11 @@ pub fn mapSingles(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
         map.deinit();
     }
 
-    var points = std.ArrayList(u32).init(alloc);
-    defer points.deinit();
+    var points: std.ArrayList(u32) = .empty;
+    defer points.deinit(alloc);
 
-    var weights = std.ArrayList(u32).init(alloc);
-    defer weights.deinit();
+    var weights: std.ArrayList(u32) = .empty;
+    defer weights.deinit(alloc);
 
     var line_it = std.mem.splitScalar(u8, data, '\n');
     while (line_it.next()) |line| {
@@ -34,7 +34,7 @@ pub fn mapSingles(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
         var split_space = std.mem.splitScalar(u8, points_str, ' ');
         while (split_space.next()) |cp_str| {
             const cp = try std.fmt.parseInt(u32, cp_str, 16);
-            try points.append(cp);
+            try points.append(alloc, cp);
         }
 
         std.debug.assert(1 <= points.items.len and points.items.len <= 3);
@@ -72,11 +72,11 @@ pub fn mapSingles(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
             const tertiary = try std.fmt.parseInt(u8, tertiary_str, 16);
 
             const weights_packed = util.packWeights(variable, primary, secondary, tertiary);
-            try weights.append(weights_packed);
+            try weights.append(alloc, weights_packed);
         }
 
         std.debug.assert(1 <= weights.items.len and weights.items.len <= 18);
-        try map.put(key, try weights.toOwnedSlice());
+        try map.put(key, try weights.toOwnedSlice(alloc));
     }
 
     return util.SinglesMap{
@@ -86,8 +86,8 @@ pub fn mapSingles(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
     };
 }
 
-pub fn loadSinglesBin(alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
-    const data = try std.fs.cwd().readFileAlloc(alloc, path, 512 * 1024);
+pub fn loadSinglesBin(io: std.Io, alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(512 * 1024));
     defer alloc.free(data);
 
     const count = std.mem.readInt(u32, data[0..@sizeOf(u32)], .little); // Map header
@@ -139,8 +139,8 @@ pub fn loadSinglesBin(alloc: std.mem.Allocator, path: []const u8) !util.SinglesM
     };
 }
 
-pub fn loadSinglesJson(alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
-    const data = try std.fs.cwd().readFileAlloc(alloc, path, 1024 * 1024);
+pub fn loadSinglesJson(io: std.Io, alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(1024 * 1024));
     defer alloc.free(data);
 
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
@@ -177,12 +177,13 @@ pub fn loadSinglesJson(alloc: std.mem.Allocator, path: []const u8) !util.Singles
 }
 
 pub fn saveSinglesBin(
+    io: std.Io,
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, []const u32),
     path: []const u8,
 ) !void {
-    var buffer = std.ArrayList(u8).init(alloc);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(alloc);
 
     var payload_bytes: u32 = 0;
     var payload_iter = map.iterator();
@@ -197,7 +198,7 @@ pub fn saveSinglesBin(
 
     // Map header
     const count = std.mem.nativeToLittle(u32, @intCast(map.count()));
-    try buffer.appendSlice(std.mem.asBytes(&count));
+    try buffer.appendSlice(alloc, std.mem.asBytes(&count));
 
     var write_iter = map.iterator();
     while (write_iter.next()) |kv| {
@@ -205,30 +206,28 @@ pub fn saveSinglesBin(
         const len: u8 = @intCast(kv.value_ptr.len); // u8 has no endianness
 
         // Entry header
-        try buffer.appendSlice(std.mem.asBytes(&key));
-        try buffer.appendSlice(std.mem.asBytes(&len));
+        try buffer.appendSlice(alloc, std.mem.asBytes(&key));
+        try buffer.appendSlice(alloc, std.mem.asBytes(&len));
 
         // Entry values
         for (kv.value_ptr.*) |v| {
-            try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u32, v)));
+            try buffer.appendSlice(alloc, std.mem.asBytes(&std.mem.nativeToLittle(u32, v)));
         }
     }
 
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    try file.writeAll(buffer.items);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = buffer.items });
 }
 
 pub fn saveSinglesJson(
+    io: std.Io,
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, []const u32),
     path: []const u8,
 ) !void {
-    var buffer = std.ArrayList(u8).init(alloc);
+    var buffer = std.Io.Writer.Allocating.init(alloc);
     defer buffer.deinit();
 
-    var ws = std.json.writeStream(buffer.writer(), .{});
+    var ws: std.json.Stringify = .{ .writer = &buffer.writer };
 
     try ws.beginObject();
 
@@ -246,8 +245,5 @@ pub fn saveSinglesJson(
 
     try ws.endObject();
 
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    try file.writeAll(buffer.items);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = buffer.written() });
 }

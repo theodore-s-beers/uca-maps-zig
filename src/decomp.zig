@@ -21,11 +21,11 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
         canonical.deinit();
     }
 
-    var fields = std.ArrayList([]const u8).init(alloc);
-    defer fields.deinit();
+    var fields: std.ArrayList([]const u8) = .empty;
+    defer fields.deinit(alloc);
 
-    var listed_decomps = std.ArrayList(u32).init(alloc);
-    defer listed_decomps.deinit();
+    var listed_decomps: std.ArrayList(u32) = .empty;
+    defer listed_decomps.deinit(alloc);
 
     var line_it = std.mem.splitScalar(u8, data, '\n');
 
@@ -35,7 +35,7 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
         fields.clearRetainingCapacity();
 
         var field_iter = std.mem.splitScalar(u8, line, ';');
-        while (field_iter.next()) |field| try fields.append(field);
+        while (field_iter.next()) |field| try fields.append(alloc, field);
 
         const code_point = try std.fmt.parseInt(u32, fields.items[0], 16);
 
@@ -57,16 +57,16 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
             std.debug.assert(4 <= decomp_str.len and decomp_str.len <= 5);
 
             const decomp = try std.fmt.parseInt(u32, decomp_str, 16);
-            try listed_decomps.append(decomp);
+            try listed_decomps.append(alloc, decomp);
         }
 
         std.debug.assert(listed_decomps.items.len > 0);
 
-        try listed.put(code_point, try listed_decomps.toOwnedSlice());
+        try listed.put(code_point, try listed_decomps.toOwnedSlice(alloc));
     }
 
-    var result = std.ArrayList(u32).init(alloc);
-    defer result.deinit();
+    var result: std.ArrayList(u32) = .empty;
+    defer result.deinit(alloc);
 
     var listed_it = listed.iterator();
 
@@ -86,10 +86,10 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
                     const c = try getCanonicalDecomp(alloc, &listed, d);
                     defer alloc.free(c);
 
-                    try result.appendSlice(c);
+                    try result.appendSlice(alloc, c);
                 }
 
-                break :blk try result.toOwnedSlice();
+                break :blk try result.toOwnedSlice(alloc);
             }
         };
 
@@ -103,8 +103,8 @@ pub fn mapDecomps(alloc: std.mem.Allocator, data: []const u8) !util.SinglesMap {
     };
 }
 
-pub fn loadDecompBin(alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
-    const data = try std.fs.cwd().readFileAlloc(alloc, path, 32 * 1024);
+pub fn loadDecompBin(io: std.Io, alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(32 * 1024));
     defer alloc.free(data);
 
     // Map header
@@ -157,8 +157,8 @@ pub fn loadDecompBin(alloc: std.mem.Allocator, path: []const u8) !util.SinglesMa
     };
 }
 
-pub fn loadDecompJson(alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
-    const data = try std.fs.cwd().readFileAlloc(alloc, path, 64 * 1024);
+pub fn loadDecompJson(io: std.Io, alloc: std.mem.Allocator, path: []const u8) !util.SinglesMap {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(64 * 1024));
     defer alloc.free(data);
 
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
@@ -199,12 +199,13 @@ pub fn loadDecompJson(alloc: std.mem.Allocator, path: []const u8) !util.SinglesM
 }
 
 pub fn saveDecompBin(
+    io: std.Io,
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, []const u32),
     path: []const u8,
 ) !void {
-    var buffer = std.ArrayList(u8).init(alloc);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(alloc);
 
     var payload_bytes: u32 = 0;
 
@@ -220,7 +221,7 @@ pub fn saveDecompBin(
 
     // Map header
     const count = std.mem.nativeToLittle(u32, @intCast(map.count()));
-    try buffer.appendSlice(std.mem.asBytes(&count));
+    try buffer.appendSlice(alloc, std.mem.asBytes(&count));
 
     var write_iter = map.iterator();
     while (write_iter.next()) |kv| {
@@ -228,30 +229,28 @@ pub fn saveDecompBin(
         const len: u8 = @intCast(kv.value_ptr.len); // u8 has no endianness
 
         // Entry header
-        try buffer.appendSlice(std.mem.asBytes(&key));
-        try buffer.appendSlice(std.mem.asBytes(&len));
+        try buffer.appendSlice(alloc, std.mem.asBytes(&key));
+        try buffer.appendSlice(alloc, std.mem.asBytes(&len));
 
         // Entry values
         for (kv.value_ptr.*) |v| {
-            try buffer.appendSlice(std.mem.asBytes(&std.mem.nativeToLittle(u32, v)));
+            try buffer.appendSlice(alloc, std.mem.asBytes(&std.mem.nativeToLittle(u32, v)));
         }
     }
 
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    try file.writeAll(buffer.items);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = buffer.items });
 }
 
 pub fn saveDecompJson(
+    io: std.Io,
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, []const u32),
     path: []const u8,
 ) !void {
-    var buffer = std.ArrayList(u8).init(alloc);
+    var buffer = std.Io.Writer.Allocating.init(alloc);
     defer buffer.deinit();
 
-    var ws = std.json.writeStream(buffer.writer(), .{});
+    var ws: std.json.Stringify = .{ .writer = &buffer.writer };
 
     try ws.beginObject();
 
@@ -269,10 +268,7 @@ pub fn saveDecompJson(
 
     try ws.endObject();
 
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    try file.writeAll(buffer.items);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = buffer.written() });
 }
 
 //
@@ -298,14 +294,14 @@ fn getCanonicalDecomp(
     }
 
     // Otherwise, we need to recurse for the canonical decomposition
-    var result = std.ArrayList(u32).init(alloc);
+    var result: std.ArrayList(u32) = .empty;
 
     for (decomp) |d| {
         const c = try getCanonicalDecomp(alloc, listed, d);
         defer alloc.free(c);
 
-        try result.appendSlice(c);
+        try result.appendSlice(alloc, c);
     }
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(alloc);
 }

@@ -52,7 +52,7 @@ const Range = struct {
 //
 
 pub const HEX: std.bit_set.ArrayBitSet(usize, 256) = blk: {
-    var set = std.StaticBitSet(256).initEmpty();
+    var set: std.StaticBitSet(256) = .empty;
     for ('0'..':') |c| set.set(c);
     for ('A'..'G') |c| set.set(c);
     break :blk set;

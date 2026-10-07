@@ -4,8 +4,8 @@ pub fn mapCCC(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, 
     var map = std.AutoHashMap(u32, u8).init(alloc);
     errdefer map.deinit();
 
-    var fields = std.ArrayList([]const u8).init(alloc);
-    defer fields.deinit();
+    var fields: std.ArrayList([]const u8) = .empty;
+    defer fields.deinit(alloc);
 
     var lines = std.mem.splitScalar(u8, data, '\n');
     while (lines.next()) |line| {
@@ -14,7 +14,7 @@ pub fn mapCCC(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, 
         fields.clearRetainingCapacity();
 
         var field_iter = std.mem.splitScalar(u8, line, ';');
-        while (field_iter.next()) |field| try fields.append(field);
+        while (field_iter.next()) |field| try fields.append(alloc, field);
 
         const code_point = try std.fmt.parseInt(u32, fields.items[0], 16);
 
@@ -30,8 +30,8 @@ pub fn mapCCC(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, 
     return map;
 }
 
-pub fn loadCccBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u8) {
-    const data = try std.fs.cwd().readFileAlloc(alloc, path, 8 * 1024);
+pub fn loadCccBin(io: std.Io, alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u8) {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(8 * 1024));
     defer alloc.free(data);
 
     const entry_size = @sizeOf(u32) + @sizeOf(u8);
@@ -55,8 +55,8 @@ pub fn loadCccBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u
     return map;
 }
 
-pub fn loadCccJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u8) {
-    const data = try std.fs.cwd().readFileAlloc(alloc, path, 16 * 1024);
+pub fn loadCccJson(io: std.Io, alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u8) {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(16 * 1024));
     defer alloc.free(data);
 
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
@@ -84,35 +84,34 @@ pub fn loadCccJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(
 }
 
 pub fn saveCccBin(
+    io: std.Io,
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, u8),
     path: []const u8,
 ) !void {
-    var buffer = std.ArrayList(u8).init(alloc);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(alloc);
 
     var it = map.iterator();
     while (it.next()) |kv| {
         const key = std.mem.nativeToLittle(u32, kv.key_ptr.*);
-        try buffer.appendSlice(std.mem.asBytes(&key));
-        try buffer.append(kv.value_ptr.*);
+        try buffer.appendSlice(alloc, std.mem.asBytes(&key));
+        try buffer.append(alloc, kv.value_ptr.*);
     }
 
-    var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    try file.writeAll(buffer.items);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = buffer.items });
 }
 
 pub fn saveCccJson(
+    io: std.Io,
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, u8),
     path: []const u8,
 ) !void {
-    var buffer = std.ArrayList(u8).init(alloc);
+    var buffer = std.Io.Writer.Allocating.init(alloc);
     defer buffer.deinit();
 
-    var ws = std.json.writeStream(buffer.writer(), .{});
+    var ws: std.json.Stringify = .{ .writer = &buffer.writer };
 
     try ws.beginObject();
 
@@ -128,8 +127,5 @@ pub fn saveCccJson(
 
     try ws.endObject();
 
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    try file.writeAll(buffer.items);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = buffer.written() });
 }

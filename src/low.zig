@@ -6,8 +6,8 @@ pub fn mapLow(alloc: std.mem.Allocator, keys: []const u8) ![183]u32 {
     var map = std.AutoHashMap(u32, u32).init(alloc);
     defer map.deinit();
 
-    var points = std.ArrayList(u32).init(alloc);
-    defer points.deinit();
+    var points: std.ArrayList(u32) = .empty;
+    defer points.deinit(alloc);
 
     var line_iter = std.mem.splitScalar(u8, keys, '\n');
     while (line_iter.next()) |line| {
@@ -23,7 +23,7 @@ pub fn mapLow(alloc: std.mem.Allocator, keys: []const u8) ![183]u32 {
         var split_space = std.mem.splitScalar(u8, points_str, ' ');
         while (split_space.next()) |cp_str| {
             const cp = try std.fmt.parseInt(u32, cp_str, 16);
-            try points.append(cp);
+            try points.append(alloc, cp);
         }
 
         std.debug.assert(1 <= points.items.len and points.items.len <= 3);
@@ -66,8 +66,8 @@ pub fn mapLow(alloc: std.mem.Allocator, keys: []const u8) ![183]u32 {
     return arr;
 }
 
-pub fn loadLowJson(alloc: std.mem.Allocator, path: []const u8) ![183]u32 {
-    const data = try std.fs.cwd().readFileAlloc(alloc, path, 2 * 1024);
+pub fn loadLowJson(io: std.Io, alloc: std.mem.Allocator, path: []const u8) ![183]u32 {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(2 * 1024));
     defer alloc.free(data);
 
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
@@ -86,17 +86,14 @@ pub fn loadLowJson(alloc: std.mem.Allocator, path: []const u8) ![183]u32 {
     return result;
 }
 
-pub fn saveLowJson(arr: *const [183]u32, path: []const u8) !void {
+pub fn saveLowJson(io: std.Io, arr: *const [183]u32, path: []const u8) !void {
     var buf: [1536]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    var ws = std.json.writeStream(fbs.writer(), .{});
+    var writer = std.Io.Writer.fixed(&buf);
+    var ws: std.json.Stringify = .{ .writer = &writer };
 
     try ws.beginArray();
     for (arr) |value| try ws.write(value);
     try ws.endArray();
 
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    try file.writeAll(fbs.getWritten());
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = writer.buffered() });
 }

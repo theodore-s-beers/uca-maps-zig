@@ -4,19 +4,19 @@ const ccc = @import("ccc");
 const decomp = @import("decomp");
 const util = @import("util");
 
-pub fn mapFCD(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, u16) {
+pub fn mapFCD(io: std.Io, alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, u16) {
     //
     // Load decomposition map
     //
 
-    var decomp_data = try decomp.loadDecompBin(alloc, "bin/decomp.bin");
+    var decomp_data = try decomp.loadDecompBin(io, alloc, "bin/decomp.bin");
     defer decomp_data.deinit();
 
     //
     // Load CCC map
     //
 
-    var ccc_map = try ccc.loadCccBin(alloc, "bin/ccc.bin");
+    var ccc_map = try ccc.loadCccBin(io, alloc, "bin/ccc.bin");
     defer ccc_map.deinit();
 
     //
@@ -30,8 +30,8 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, 
     // Iterate over lines and find combining classes
     //
 
-    var fields = std.ArrayList([]const u8).init(alloc);
-    defer fields.deinit();
+    var fields: std.ArrayList([]const u8) = .empty;
+    defer fields.deinit(alloc);
 
     var line_iter = std.mem.splitScalar(u8, data, '\n');
 
@@ -41,7 +41,7 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, 
         fields.clearRetainingCapacity();
 
         var field_iter = std.mem.splitScalar(u8, line, ';');
-        while (field_iter.next()) |field| try fields.append(field);
+        while (field_iter.next()) |field| try fields.append(alloc, field);
 
         const code_point = try std.fmt.parseInt(u32, fields.items[0], 16);
 
@@ -63,8 +63,8 @@ pub fn mapFCD(alloc: std.mem.Allocator, data: []const u8) !std.AutoHashMap(u32, 
     return fcd_map;
 }
 
-pub fn loadFcdBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u16) {
-    const data = try std.fs.cwd().readFileAlloc(alloc, path, 8 * 1024);
+pub fn loadFcdBin(io: std.Io, alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u16) {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(8 * 1024));
     defer alloc.free(data);
 
     const entry_size = @sizeOf(u32) + @sizeOf(u16);
@@ -89,8 +89,8 @@ pub fn loadFcdBin(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u
     return map;
 }
 
-pub fn loadFcdJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u16) {
-    const data = try std.fs.cwd().readFileAlloc(alloc, path, 16 * 1024);
+pub fn loadFcdJson(io: std.Io, alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(u32, u16) {
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, path, alloc, .limited(16 * 1024));
     defer alloc.free(data);
 
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, data, .{});
@@ -118,37 +118,36 @@ pub fn loadFcdJson(alloc: std.mem.Allocator, path: []const u8) !std.AutoHashMap(
 }
 
 pub fn saveFcdBin(
+    io: std.Io,
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, u16),
     path: []const u8,
 ) !void {
-    var buffer = std.ArrayList(u8).init(alloc);
-    defer buffer.deinit();
+    var buffer: std.ArrayList(u8) = .empty;
+    defer buffer.deinit(alloc);
 
     var it = map.iterator();
     while (it.next()) |kv| {
         const key = std.mem.nativeToLittle(u32, kv.key_ptr.*);
         const value = std.mem.nativeToLittle(u16, kv.value_ptr.*);
 
-        try buffer.appendSlice(std.mem.asBytes(&key));
-        try buffer.appendSlice(std.mem.asBytes(&value));
+        try buffer.appendSlice(alloc, std.mem.asBytes(&key));
+        try buffer.appendSlice(alloc, std.mem.asBytes(&value));
     }
 
-    var file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    try file.writeAll(buffer.items);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = buffer.items });
 }
 
 pub fn saveFcdJson(
+    io: std.Io,
     alloc: std.mem.Allocator,
     map: *const std.AutoHashMap(u32, u16),
     path: []const u8,
 ) !void {
-    var buffer = std.ArrayList(u8).init(alloc);
+    var buffer = std.Io.Writer.Allocating.init(alloc);
     defer buffer.deinit();
 
-    var ws = std.json.writeStream(buffer.writer(), .{});
+    var ws: std.json.Stringify = .{ .writer = &buffer.writer };
 
     try ws.beginObject();
 
@@ -164,8 +163,5 @@ pub fn saveFcdJson(
 
     try ws.endObject();
 
-    const file = try std.fs.cwd().createFile(path, .{ .truncate = true });
-    defer file.close();
-
-    try file.writeAll(buffer.items);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = buffer.written() });
 }
