@@ -26,8 +26,8 @@ single-character and contraction outputs remain available as intermediate data.
 Transfer the runtime tables and their shared reader to the sibling `later` repo:
 
 ```sh
-cp bin/{collation,collation_cldr,decomp,fcd,variable}.bin ../later/src/bin/
-cp generated/{ccc,consts,implicit}.zig ../later/src/
+cp bin/{collation,collation_cldr}.bin ../later/src/bin/
+cp generated/{ccc,consts,implicit,normalization_tables}.zig ../later/src/
 cp src/collation_table.zig ../later/src/collation_table.zig
 cd ../later
 zig fmt --check .
@@ -68,3 +68,17 @@ page indexing, followed by a short linear search or binary search for
 contraction edges. This replaces runtime collation hash maps and separate
 contraction-starter lists. The indexed files are larger than the old serialized
 maps; the layout is intended to reduce runtime lookup and allocation overhead.
+
+## Indexed normalization tables
+
+Full regeneration emits `generated/normalization_tables.zig` and verifies its
+pages against the decomposition, FCD, and variable maps for every code point.
+Decomposition and FCD use deduplicated 256-code-point pages; variable membership
+uses four 64-bit words per page. Empty pages use a `0xffff` index sentinel.
+Decomposition entries pack a 16-bit length and a values offset starting at bit
+16; identical decomposition rows share storage. The generated arrays are
+immutable and require no runtime allocation. Variable membership preserves the
+source map's inclusion of primary-ignorable characters.
+
+The old decomposition, FCD, and variable binary/JSON maps remain available as
+intermediate data, but `later` no longer loads them.

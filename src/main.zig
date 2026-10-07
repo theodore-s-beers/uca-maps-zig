@@ -1,3 +1,4 @@
+const normalization = @import("normalization.zig");
 const std = @import("std");
 
 const unicode = @import("unicode.zig");
@@ -325,4 +326,9 @@ pub fn main(init: std.process.Init) !void {
 
     std.debug.assert(variable_from_bin.count() == variable_from_json.count());
     std.debug.assert(variable_from_bin.count() == variable_set.count());
+    try normalization.write(io, alloc, &decomps.map, &fcd_map, &variable_set);
+}
+
+test {
+    _ = normalization;
 }
