@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const compact = @import("compact");
 const ccc = @import("ccc");
 const decomp = @import("decomp");
 const fcd = @import("fcd");
@@ -286,6 +287,9 @@ pub fn main() !void {
 
     std.debug.assert(multi_from_bin_cldr.map.count() == multi_from_json_cldr.map.count());
     std.debug.assert(multi_from_bin_cldr.map.count() == multi_cldr.map.count());
+
+    try compact.write(alloc, &singles_ducet.map, &multi_ducet.map, "bin/collation.bin");
+    try compact.write(alloc, &singles_cldr.map, &multi_cldr.map, "bin/collation_cldr.bin");
 
     //
     // Generate variable weight map

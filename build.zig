@@ -82,6 +82,21 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("single", single_mod);
     exe_mod.addImport("variable", variable_mod);
 
+    const compact_mod = b.createModule(.{
+        .root_source_file = b.path("src/compact.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    compact_mod.addImport("single", single_mod);
+    compact_mod.addImport("multi", multi_mod);
+    exe_mod.addImport("compact", compact_mod);
+    const compact_exe = b.addExecutable(.{
+        .name = "compact_collation_tables",
+        .root_module = compact_mod,
+    });
+    const compact_run = b.addRunArtifact(compact_exe);
+    b.step("compact", "Build and verify compact collation tables from existing maps").dependOn(&compact_run.step);
+
     const exe = b.addExecutable(.{
         .name = "uca_maps_zig",
         .root_module = exe_mod,
@@ -125,7 +140,11 @@ pub fn build(b: *std.Build) void {
     const exe_unit_tests = b.addTest(.{ .root_module = exe_mod });
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
+    const compact_tests = b.addTest(.{ .root_module = compact_mod });
+    const run_compact_tests = b.addRunArtifact(compact_tests);
+
     const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_compact_tests.step);
     test_step.dependOn(&run_ccc_unit_tests.step);
     test_step.dependOn(&run_decomp_unit_tests.step);
     test_step.dependOn(&run_fcd_unit_tests.step);
